@@ -1,8 +1,4 @@
-"""
-CoinBourg Constants
-===================
-Application-wide constants and enumerations.
-"""
+ 
 
 from enum import Enum
 
