@@ -16,9 +16,11 @@ from collections import defaultdict
 
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field, validator
+import os
 
 from src.config.settings import get_settings, RISK_PRESETS
 from src.core.trading_engine import TradingEngine
@@ -298,7 +300,24 @@ async def get_engine() -> TradingEngine:
 
 @app.get("/", tags=["General"])
 async def root():
-    """Root endpoint."""
+    """Serve the dashboard UI."""
+    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+    index_file = os.path.join(static_dir, "index.html")
+    
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    else:
+        # Fallback to JSON response if HTML not found
+        return {
+            "name": "CoinBourg AI Trading Bot",
+            "version": get_settings().APP_VERSION,
+            "status": "running"
+        }
+
+
+@app.get("/api/info", tags=["General"])
+async def api_info():
+    """API information endpoint."""
     return {
         "name": "CoinBourg AI Trading Bot",
         "version": get_settings().APP_VERSION,
