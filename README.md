@@ -215,6 +215,25 @@ curl -X POST http://localhost:8000/risk-settings \
 
 ## 🚢 Deployment
 
+### ✅ Pre-Deployment Safeguards
+
+Before deploying, always run the pre-flight check to catch issues early:
+
+```bash
+# Run comprehensive deployment validation
+bash scripts/preflight-check.sh
+```
+
+This validates:
+- ✓ Docker and Docker Compose installation
+- ✓ Required files and directory structure
+- ✓ .env file syntax and required variables
+- ✓ Docker Compose configuration
+- ✓ Python requirements
+- ✓ Secret protection (.env not in image)
+
+**See [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) for quick reference before each deployment.**
+
 ### Deploy to Azure Student VM
 
 1. **Create Azure VM** (Ubuntu 22.04 LTS, B1s - Free tier)
@@ -230,25 +249,65 @@ ssh your_username@YOUR_VM_IP
 scp -r ./* your_username@YOUR_VM_IP:~/coinbourg/
 ```
 
-4. **Run deployment script:**
+4. **Run pre-flight checks:**
 ```bash
 cd ~/coinbourg
-chmod +x scripts/deploy-azure.sh
-./scripts/deploy-azure.sh
+bash scripts/preflight-check.sh  # Must pass before proceeding
 ```
 
 5. **Configure and start:**
 ```bash
 cp .env.example .env
-nano .env  # Add your API keys
-docker compose up -d
+nano .env  # Add your API keys (BINANCE_API_KEY, BINANCE_API_SECRET, DEEPSEEK_API_KEY)
+docker compose up -d --build
 ```
+
+6. **Verify deployment:**
+```bash
+docker compose ps           # Check all containers are healthy
+docker compose logs -f      # Monitor logs in real-time
+curl http://localhost:8000/health  # Verify app is responding
+```
+
+### Automated Deployment (GitHub Actions)
+
+Push to `main` branch to trigger automatic deployment:
+
+1. **Commit and push:**
+```bash
+git add .
+git commit -m "Your changes"
+git push origin main
+```
+
+2. **Workflow automatically:**
+   - ✅ Creates deployment archive
+   - ✅ Uploads to Azure VM via SSH
+   - ✅ Validates .env syntax
+   - ✅ Rebuilds Docker containers
+   - ✅ Verifies app health
+   - ✅ Logs deployment status
+
+3. **Monitor workflow:**
+   - GitHub Actions: https://github.com/AzizBahloul/CoinBourg/actions
+   - Check "Deploy to Azure VM" step for status
+
+### Runtime Safeguards
+
+The bot includes startup validation that automatically:
+- ✅ Ensures all required directories exist with correct permissions
+- ✅ Verifies logging directory is writable
+- ✅ Prevents crashes due to permission errors
+- ✅ Provides clear error messages if validation fails
+
+**See [DEPLOYMENT_PREVENTION_GUIDE.md](DEPLOYMENT_PREVENTION_GUIDE.md) for detailed information on all safeguards.**
 
 ### Access Points
 
 - **API Documentation**: `http://YOUR_VM_IP:8000/docs`
 - **Dashboard**: `http://YOUR_VM_IP:8000`
 - **Health Check**: `http://YOUR_VM_IP:8000/health`
+- **AI Thought Feed**: Real-time decision tracking in dashboard
 
 ---
 

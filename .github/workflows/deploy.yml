@@ -74,17 +74,52 @@ jobs:
             LOG_LEVEL=INFO
             EOF
             
+            # Validate .env file syntax before deployment
+            echo "Validating .env file syntax..."
+            if grep -E '\\$|`|\$\{' .env | grep -v '^#'; then
+              echo "WARNING: .env contains potential shell expansion characters"
+            fi
+            
+            # Pre-deployment checks
+            echo "Running pre-deployment validation checks..."
+            if [ -f docker-compose.yml ]; then
+              docker compose config > /dev/null && echo "✓ Docker Compose configuration valid"
+            fi
+            
             # Restart application
             echo "Restarting Docker containers..."
             docker compose down || true
             docker compose up -d --build
             
             # Wait for containers to start
-            sleep 10
+            echo "Waiting for containers to initialize..."
+            sleep 15
             
-            # Show status
+            # Validate container health
+            echo "Validating container health..."
+            if ! docker compose ps | grep -q "healthy"; then
+              echo "WARNING: Not all containers are healthy yet, checking logs..."
+              docker compose logs --tail=20 | tail -30
+            fi
+            
+            # Check if app is responding
+            echo "Checking if app is responding..."
+            for i in {1..10}; do
+              if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                echo "✓ App is healthy and responding"
+                break
+              fi
+              if [ $i -lt 10 ]; then
+                echo "Attempt $i: Waiting for app to respond..."
+                sleep 3
+              fi
+            done
+            
+            # Show final status
             echo "=== Deployment complete ==="
             docker compose ps
+            echo "=== Recent logs ==="
+            docker compose logs --tail=10 coinbourg-bot
           DEPLOY
           
           echo "✓ Deployment successful!"
