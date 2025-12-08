@@ -447,9 +447,7 @@ class BinanceClient:
             params={"symbol": symbol, "limit": limit}
         )
     
-    # ===========================================
-    # Account Methods
-    # ===========================================
+ 
     
     async def get_account(self) -> Dict:
         """Get current account information including balances."""

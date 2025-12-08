@@ -12,13 +12,13 @@ jobs:
 
       - name: Create deployment archive
         run: |
-          tar -czf deploy.tar.gz \
+          tar -czf /tmp/deploy.tar.gz \
             --exclude='venv' \
             --exclude='.git' \
             --exclude='__pycache__' \
             --exclude='*.pyc' \
-            --exclude='deploy.tar.gz' \
             .
+          mv /tmp/deploy.tar.gz deploy.tar.gz
 
       - name: Copy archive to Azure VM
         uses: appleboy/scp-action@master
