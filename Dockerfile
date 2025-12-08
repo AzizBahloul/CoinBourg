@@ -40,7 +40,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash coinbourg
-RUN mkdir -p /app/logs /app/data && chown -R coinbourg:coinbourg /app
+RUN mkdir -p /app/logs /app/data && chown -R coinbourg:coinbourg /app && chmod -R 755 /app
 
 # Copy application code
 COPY --chown=coinbourg:coinbourg . .
