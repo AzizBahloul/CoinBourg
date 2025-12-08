@@ -61,8 +61,8 @@ RUN find /app -type d -exec chmod 755 {} + \
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
-# Install su-exec for privilege dropping
-RUN apt-get update && apt-get install -y --no-install-recommends su-exec \
+# Install gosu for privilege dropping (Debian equivalent of su-exec)
+RUN apt-get update && apt-get install -y --no-install-recommends gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and prepare directories
