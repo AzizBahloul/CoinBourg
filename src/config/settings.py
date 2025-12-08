@@ -36,9 +36,7 @@ class Settings(BaseSettings):
     BINANCE_API_SECRET: str = Field(..., description="Binance API secret")
     BINANCE_TESTNET: bool = Field(default=True, description="Use Binance testnet")
     
-    # ===========================================
-    # Database Settings
-    # ===========================================
+ 
     DATABASE_URL: str = Field(
         default="postgresql://coinbourg:coinbourg_secure_password@db:5432/coinbourg",
         description="PostgreSQL connection URL"
