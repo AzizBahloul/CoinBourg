@@ -20,44 +20,41 @@ jobs:
             .
           mv /tmp/deploy.tar.gz deploy.tar.gz
 
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
       - name: Deploy to Azure VM
-        uses: appleboy/ssh-action@master
-        env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
-          BINANCE_API_SECRET: ${{ secrets.BINANCE_API_SECRET }}
-          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
-        with:
-          host: ${{ secrets.AZURE_HOST }}
-          username: ${{ secrets.AZURE_USERNAME }}
-          password: ${{ secrets.AZURE_PASSWORD }}
-          script: |
+        run: |
+          # Upload archive
+          sshpass -p "${{ secrets.AZURE_PASSWORD }}" scp -o StrictHostKeyChecking=no deploy.tar.gz ${{ secrets.AZURE_USERNAME }}@${{ secrets.AZURE_HOST }}:~/
+          
+          # Run deployment commands
+          sshpass -p "${{ secrets.AZURE_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.AZURE_USERNAME }}@${{ secrets.AZURE_HOST }} << 'DEPLOY'
+            set -e
+            
+            echo "=== Deployment started ==="
             cd ~
             
-            # Upload archive using heredoc
-            cat > deploy.tar.gz << 'ARCHIVE'
-            $(cat deploy.tar.gz | base64)
-            ARCHIVE
-            
-            # Create CoinBourg directory
+            # Extract archive
+            echo "Extracting archive..."
             mkdir -p CoinBourg
+            tar -xzf deploy.tar.gz -C CoinBourg/
+            rm deploy.tar.gz
+            
             cd CoinBourg
             
-            # Extract archive
-            tar -xzf ~/deploy.tar.gz
-            rm ~/deploy.tar.gz
-            
-            # Create .env file with secrets
+            # Create .env file
+            echo "Creating .env file..."
             cat > .env << 'EOF'
             APP_NAME=CoinBourg AI Trading Bot
             APP_VERSION=1.0.0
             DEBUG=false
             ENVIRONMENT=production
-            DEEPSEEK_API_KEY=${{ env.DEEPSEEK_API_KEY }}
+            DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}
             DEEPSEEK_BASE_URL=https://api.deepseek.com
             DEEPSEEK_MODEL=deepseek-chat
-            BINANCE_API_KEY=${{ env.BINANCE_API_KEY }}
-            BINANCE_API_SECRET=${{ env.BINANCE_API_SECRET }}
+            BINANCE_API_KEY=${{ secrets.BINANCE_API_KEY }}
+            BINANCE_API_SECRET=${{ secrets.BINANCE_API_SECRET }}
             BINANCE_TESTNET=false
             DATABASE_URL=postgresql://coinbourg:coinbourg_secure_password@db:5432/coinbourg
             REDIS_URL=redis://redis:6379/0
@@ -73,15 +70,21 @@ jobs:
             PRICE_CHECK_INTERVAL_SECONDS=10
             API_HOST=0.0.0.0
             API_PORT=8000
-            SECRET_KEY=${{ env.APP_SECRET_KEY }}
+            SECRET_KEY=${{ secrets.APP_SECRET_KEY }}
             LOG_LEVEL=INFO
             EOF
             
-            # Restart the application
-            echo "Restarting application..."
+            # Restart application
+            echo "Restarting Docker containers..."
             docker compose down || true
             docker compose up -d --build
             
+            # Wait for containers to start
+            sleep 10
+            
             # Show status
-            echo "Deployment complete!"
+            echo "=== Deployment complete ==="
             docker compose ps
+          DEPLOY
+          
+          echo "✓ Deployment successful!"

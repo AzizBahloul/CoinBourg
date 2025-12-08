@@ -1,8 +1,4 @@
-"""
-CoinBourg Main Entry Point
-==========================
-Main entry point for the CoinBourg AI Trading Bot.
-"""
+
 
 import asyncio
 import logging
