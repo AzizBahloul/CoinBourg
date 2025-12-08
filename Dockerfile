@@ -57,28 +57,18 @@ RUN find /app -type d -exec chmod 755 {} + \
     && find /app -type f -exec chmod 644 {} + \
     && chmod +x /app/scripts/*.sh 2>/dev/null || true
 
-# Create startup validation script to prevent permission errors at runtime
-# Ensure directories exist with proper permissions before app runs
-RUN mkdir -p /app/logs /app/data \
-    && chown -R coinbourg:coinbourg /app/logs /app/data \
-    && chmod -R 755 /app/logs /app/data \
-    && echo "#!/bin/bash" > /app/docker-entrypoint.sh \
-    && echo 'set -e' >> /app/docker-entrypoint.sh \
-    && echo 'echo "[STARTUP] Checking directory permissions..."' >> /app/docker-entrypoint.sh \
-    && echo 'for dir in /app/logs /app/data; do' >> /app/docker-entrypoint.sh \
-    && echo '  mkdir -p "$dir" || true' >> /app/docker-entrypoint.sh \
-    && echo '  if [ ! -w "$dir" ]; then' >> /app/docker-entrypoint.sh \
-    && echo '    echo "[ERROR] Directory not writable: $dir"' >> /app/docker-entrypoint.sh \
-    && echo '    ls -la /app | grep -E "logs|data"' >> /app/docker-entrypoint.sh \
-    && echo '    exit 1' >> /app/docker-entrypoint.sh \
-    && echo '  fi' >> /app/docker-entrypoint.sh \
-    && echo 'done' >> /app/docker-entrypoint.sh \
-    && echo 'echo "[STARTUP] Permission validation successful"' >> /app/docker-entrypoint.sh \
-    && echo 'exec "$@"' >> /app/docker-entrypoint.sh \
-    && chmod +x /app/docker-entrypoint.sh
+# Copy entrypoint script
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
-# Switch to non-root user
-USER coinbourg
+# Install su-exec for privilege dropping
+RUN apt-get update && apt-get install -y --no-install-recommends su-exec \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and prepare directories
+RUN mkdir -p /app/logs /app/data \
+    && chown coinbourg:coinbourg /app/logs /app/data \
+    && chmod 755 /app/logs /app/data
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
