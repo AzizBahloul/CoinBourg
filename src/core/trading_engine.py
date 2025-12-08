@@ -127,7 +127,7 @@ class TradingEngine:
             "current_value": 0.0,
         }
         
-        # Risk settings from preset
+        
         self._load_risk_preset()
         
         # Analysis cache
