@@ -460,7 +460,7 @@ class BinanceClient:
         Get all asset balances.
         
         Returns:
-            Dictionary of {asset: {"free": float, "locked": float}}
+            Dictionary of {asset: {"free": float, "locked": float, "total": float}}
         """
         account = await self.get_account()
         balances = {}

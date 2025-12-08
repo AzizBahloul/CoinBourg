@@ -179,7 +179,7 @@ After=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/${USER}/coinbourg
+WorkingDirectory=/home/${USER}/CoinBourg
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
 User=${USER}

@@ -118,6 +118,47 @@
             </div>
         </div>
 
+        <!-- Live AI Feed -->
+        <div class="card-gradient rounded-2xl p-6 border border-white/10 mb-8">
+            <h2 class="text-lg font-semibold mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                Live AI Thought Process
+            </h2>
+            <div class="overflow-y-auto max-h-64 space-y-3 pr-2 custom-scrollbar">
+                <template x-for="thought in thoughts" :key="thought.timestamp + thought.symbol">
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/5 hover:bg-white/10 transition-colors">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-sm" x-text="thought.symbol"></span>
+                                <span class="text-xs text-gray-400" x-text="new Date(thought.timestamp).toLocaleTimeString()"></span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="{
+                                        'bg-green-500/20 text-green-400': thought.action === 'BUY',
+                                        'bg-red-500/20 text-red-400': thought.action === 'SELL',
+                                        'bg-gray-500/20 text-gray-400': thought.action === 'HOLD'
+                                    }" x-text="thought.action"></span>
+                                <span class="text-xs text-gray-400">Conf: <span x-text="(thought.confidence * 100).toFixed(0) + '%'"></span></span>
+                            </div>
+                        </div>
+                        <p class="text-sm text-gray-300 mb-2" x-text="thought.reasoning"></p>
+                        <div x-show="thought.filtered_reason" class="text-xs text-yellow-400/80 flex items-center">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            <span x-text="'Filtered: ' + thought.filtered_reason"></span>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="thoughts.length === 0" class="text-center py-8 text-gray-500">
+                    Waiting for AI analysis...
+                </div>
+            </div>
+        </div>
+
         <!-- Main Content Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Open Positions -->
@@ -295,6 +336,7 @@
             return {
                 status: {},
                 trades: [],
+                thoughts: [],
                 analysis: null,
                 analyzeSymbol: 'BTCUSDT',
                 analyzing: false,
@@ -303,9 +345,11 @@
                 async init() {
                     await this.fetchStatus();
                     await this.fetchTrades();
-                    // Poll for updates every 10 seconds
-                    setInterval(() => this.fetchStatus(), 10000);
-                    setInterval(() => this.fetchTrades(), 30000);
+                    await this.fetchThoughts();
+                    // Poll for updates
+                    setInterval(() => this.fetchStatus(), 5000);
+                    setInterval(() => this.fetchTrades(), 10000);
+                    setInterval(() => this.fetchThoughts(), 5000);
                 },
 
                 async fetchStatus() {
@@ -323,6 +367,15 @@
                         this.trades = await response.json();
                     } catch (error) {
                         console.error('Failed to fetch trades:', error);
+                    }
+                },
+
+                async fetchThoughts() {
+                    try {
+                        const response = await fetch(`${this.apiUrl}/api/v1/ai/thoughts?limit=50`);
+                        this.thoughts = await response.json();
+                    } catch (error) {
+                        console.error('Failed to fetch thoughts:', error);
                     }
                 },
 

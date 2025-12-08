@@ -556,6 +556,16 @@ async def get_metrics(engine: TradingEngine = Depends(get_engine)):
     }
 
 
+@app.get("/api/v1/ai/thoughts", tags=["AI"])
+async def get_ai_thoughts(
+    limit: int = 20,
+    engine: TradingEngine = Depends(get_engine),
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Get recent AI thoughts and analysis."""
+    return engine.ai_thoughts[:limit]
+
+
 # Error handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):

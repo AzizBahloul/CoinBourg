@@ -134,6 +134,9 @@ class TradingEngine:
         self._analysis_cache: Dict[str, Dict] = {}
         self._cache_expiry: Dict[str, datetime] = {}
         
+        # AI Thought History (for UI)
+        self.ai_thoughts: List[Dict] = []
+        
         logger.info("TradingEngine initialized")
     
     def _load_risk_preset(self):
@@ -170,8 +173,8 @@ class TradingEngine:
         # Get initial portfolio value
         self.metrics["current_value"] = await self.binance.get_portfolio_value()
         self.metrics["peak_value"] = self.metrics["current_value"]
-        
         logger.info(f"✓ Portfolio value: ${self.metrics['current_value']:,.2f}")
+        
         logger.info("Trading engine initialized successfully")
     
     async def shutdown(self):
@@ -489,7 +492,28 @@ class TradingEngine:
         self._analysis_cache[symbol] = decision
         self._cache_expiry[symbol] = datetime.utcnow() + timedelta(minutes=5)
         
+        # Record thought for UI
+        self._record_ai_thought(symbol, decision, market_data)
+        
         return decision
+    
+    def _record_ai_thought(self, symbol: str, decision: Dict, market_data: Dict):
+        """Record AI analysis for the UI feed."""
+        thought = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "symbol": symbol,
+            "action": decision.get("action", "HOLD"),
+            "confidence": decision.get("confidence", 0.0),
+            "reasoning": decision.get("reasoning", "No reasoning provided"),
+            "price": market_data.get("current_price", 0.0),
+            "sentiment": decision.get("sentiment", "NEUTRAL"),
+            "filtered_reason": decision.get("filtered_reason", None)
+        }
+        
+        # Keep last 50 thoughts
+        self.ai_thoughts.insert(0, thought)
+        if len(self.ai_thoughts) > 50:
+            self.ai_thoughts.pop()
     
     def _apply_risk_filters(
         self,
