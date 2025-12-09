@@ -513,12 +513,16 @@ async def update_risk_settings(
     
     preset = RISK_PRESETS[request.risk_level.upper()]
     
+    # Update engine attributes
     engine.max_position_size_percent = preset["max_position_size_percent"]
     engine.stop_loss_percent = preset["stop_loss_percent"]
     engine.take_profit_percent = preset["take_profit_percent"]
     engine.max_daily_trades = preset["max_daily_trades"]
     engine.max_drawdown_percent = preset["max_drawdown_percent"]
     engine.min_confidence_score = preset["min_confidence_score"]
+    
+    # Update settings object so status endpoint reflects the change
+    engine.settings.RISK_LEVEL = request.risk_level.upper()
     
     return {
         "status": "updated",
