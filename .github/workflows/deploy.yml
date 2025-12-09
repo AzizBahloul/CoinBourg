@@ -84,9 +84,17 @@ jobs:
               docker compose config > /dev/null && echo "✓ Docker Compose configuration valid"
             fi
             
-            # Restart application
-            echo "Stopping existing containers..."
-            docker compose down || true
+            # Forcefully clean up existing containers and networks
+            echo "Stopping and removing existing containers..."
+            docker compose down --remove-orphans || true
+            
+            # Force remove any remaining containers with these names
+            echo "Force removing any lingering containers..."
+            docker rm -f coinbourg-bot coinbourg-db coinbourg-redis coinbourg-nginx 2>/dev/null || true
+            
+            # Remove the network if it exists
+            echo "Removing existing network..."
+            docker network rm coinbourg_coinbourg-network 2>/dev/null || true
             
             echo "Starting containers..."
             docker compose up -d --build
