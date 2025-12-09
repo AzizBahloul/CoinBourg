@@ -28,7 +28,7 @@
         .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.5); border-radius: 3px; }
         .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(99, 102, 241, 0.7); }
         @keyframes tickerScroll { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-        .ticker-scroll { animation: tickerScroll 30s linear infinite; }
+        .ticker-scroll { animation: tickerScroll 40s linear infinite; width: fit-content; }
         @keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.1); } }
         .live-pulse { animation: livePulse 1.5s ease-in-out infinite; }
         .chart-container { position: relative; height: 300px; }
@@ -434,9 +434,21 @@
                 },
 
                 async toggleBot() {
-                    const action = this.status.is_running ? 'stop' : 'start';
-                    await fetch(`/api/bot/${action}`, { method: 'POST' });
-                    await this.fetchStatus();
+                    try {
+                        const action = this.status.is_running ? 'stop' : 'start';
+                        const r = await fetch(`/api/bot/${action}`, { method: 'POST' });
+                        if (r.ok) {
+                            const result = await r.json();
+                            console.log(`Bot ${action} response:`, result);
+                            setTimeout(() => this.fetchStatus(), 500);
+                        } else {
+                            console.error(`Failed to ${action} bot:`, r.statusText);
+                            alert(`Failed to ${action} bot. Check console for details.`);
+                        }
+                    } catch (e) {
+                        console.error('Error toggling bot:', e);
+                        alert('Error toggling bot: ' + e.message);
+                    }
                 },
 
                 async runQuickAnalysis() {
@@ -446,7 +458,15 @@
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ symbol: this.quickAnalysisSymbol })
                         });
-                        this.quickAnalysisResult = await r.json();
+                        if (r.ok) {
+                            this.quickAnalysisResult = await r.json();
+                        } else {
+                            console.error('Analysis failed:', r.statusText);
+                            alert('Analysis failed. Check console.');
+                        }
+                    } catch (e) {
+                        console.error('Analysis error:', e);
+                        alert('Analysis error: ' + e.message);
                     } finally {
                         this.quickAnalysisLoading = false;
                     }
@@ -459,15 +479,18 @@
                 toggleAutoRefresh() { this.autoRefresh = !this.autoRefresh; },
 
                 startPriceTicker() {
-                    setInterval(() => this.updatePriceTickers(), 3000);
+                    this.updatePriceTickers();
+                    setInterval(() => this.updatePriceTickers(), 5000);
                 },
 
                 updatePriceTickers() {
                     const symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'];
-                    this.priceTickers = symbols.map(s => {
+                    const tickers = symbols.map(s => {
                         const t = this.aiThoughts.find(a => a.symbol === s);
-                        return { symbol: s, price: t?.price || 0, change: Math.random() * 10 - 5 };
+                        return { symbol: s, price: t?.price || 0, change: t?.price ? (Math.random() * 10 - 5) : 0 };
                     });
+                    // Duplicate for seamless scroll
+                    this.priceTickers = [...tickers, ...tickers, ...tickers];
                 },
 
                 initPerformanceChart() {
