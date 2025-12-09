@@ -417,17 +417,17 @@
                 },
 
                 async fetchStatus() {
-                    const r = await fetch('/api/status');
+                    const r = await fetch('/status');
                     this.status = await r.json();
                 },
 
                 async fetchPositions() {
-                    const r = await fetch('/api/positions');
+                    const r = await fetch('/positions');
                     this.positions = await r.json();
                 },
 
                 async fetchAIThoughts() {
-                    const r = await fetch('/api/ai-thoughts?limit=20');
+                    const r = await fetch('/api/v1/ai/thoughts?limit=20');
                     const d = await r.json();
                     this.aiThoughts = d.thoughts || [];
                     this.updatePriceTickers();
@@ -436,7 +436,7 @@
                 async toggleBot() {
                     try {
                         const action = this.status.is_running ? 'stop' : 'start';
-                        const r = await fetch(`/api/bot/${action}`, { method: 'POST' });
+                        const r = await fetch(`/${action}`, { method: 'POST' });
                         if (r.ok) {
                             const result = await r.json();
                             console.log(`Bot ${action} response:`, result);
@@ -454,7 +454,7 @@
                 async runQuickAnalysis() {
                     this.quickAnalysisLoading = true;
                     try {
-                        const r = await fetch('/api/analyze', {
+                        const r = await fetch('/analyze', {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ symbol: this.quickAnalysisSymbol })
                         });
