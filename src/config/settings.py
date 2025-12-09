@@ -57,16 +57,26 @@ class Settings(BaseSettings):
     TAKE_PROFIT_PERCENT: float = Field(default=4.0, description="Default take profit percentage")
     MAX_DRAWDOWN_PERCENT: float = Field(default=10.0, description="Maximum allowed drawdown percentage")
     
-    # Trading Pairs
+    # Trading Pairs (Dynamic or Static)
     TRADING_PAIRS: List[str] = Field(
         default=["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"],
-        description="List of trading pairs to monitor"
+        description="List of trading pairs to monitor (used if DYNAMIC_PAIR_SELECTION=False)"
     )
     BASE_CURRENCY: str = Field(default="USDT", description="Base currency for trading")
+    
+    # Dynamic Coin Selection
+    DYNAMIC_PAIR_SELECTION: bool = Field(default=True, description="Use dynamic coin scanner instead of fixed pairs")
+    MIN_VOLUME_USD: float = Field(default=1000000.0, description="Minimum 24h volume in USD for coin selection")
+    MAX_COINS_SCAN: int = Field(default=30, description="Maximum number of coins to scan/trade")
+    SCAN_INTERVAL_HOURS: int = Field(default=1, description="Hours between market scans")
     
     # Analysis Intervals
     ANALYSIS_INTERVAL_SECONDS: int = Field(default=300, description="AI analysis interval in seconds")
     PRICE_CHECK_INTERVAL_SECONDS: int = Field(default=10, description="Price check interval in seconds")
+    
+    # Paper Trading
+    PAPER_TRADING: bool = Field(default=True, description="Enable paper trading mode (no real orders)")
+    TRADING_ENABLED: bool = Field(default=False, description="Master switch to enable live trading")
     
     # ===========================================
     # Notification Settings

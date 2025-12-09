@@ -110,8 +110,12 @@ class TradingEngine:
         self.deepseek = DeepSeekClient()
         
         # Trading state
+        # Internal state
         self.is_running = False
+        self.binance_available = False  # Track if Binance is available
+        self.deepseek_available = False  # Track if AI is available
         self.positions: Dict[str, Position] = {}
+        self.open_orders: Dict[str, Dict] = {}
         self.trades: List[Trade] = []
         self.daily_trades_count = 0
         self.last_trade_date = datetime.utcnow().date()
@@ -158,22 +162,42 @@ class TradingEngine:
         
         # Test Binance connection
         if not await self.binance.test_connectivity():
-            raise Exception("Failed to connect to Binance API")
-        logger.info("✓ Binance connection established")
+            logger.warning("⚠ Binance connection failed - using demo mode")
+            self.binance_available = False
+        else:
+            logger.info("✓ Binance connection established")
+            self.binance_available = True
         
-        # Test DeepSeek connection
-        if not await self.deepseek.test_connection():
-            raise Exception("Failed to connect to DeepSeek API")
-        logger.info("✓ DeepSeek connection established")
+        # Test DeepSeek connection (optional - bot can work without AI)
+        try:
+            if await self.deepseek.test_connection():
+                logger.info("✓ DeepSeek connection established")
+                self.deepseek_available = True
+            else:
+                logger.warning("⚠ DeepSeek connection failed - AI features disabled")
+                self.deepseek_available = False
+        except Exception as e:
+            logger.warning(f"⚠ DeepSeek unavailable: {e} - AI features disabled")
+            self.deepseek_available = False
         
-        # Load exchange info
-        await self.binance.get_exchange_info()
-        logger.info("✓ Exchange info loaded")
+        # Load exchange info (if Binance available)
+        if self.binance_available:
+            try:
+                await self.binance.get_exchange_info()
+                logger.info("✓ Exchange info loaded")
+                
+                # Get initial portfolio value
+                self.metrics["current_value"] = await self.binance.get_portfolio_value()
+                self.metrics["peak_value"] = self.metrics["current_value"]
+                logger.info(f"✓ Portfolio value: ${self.metrics['current_value']:,.2f}")
+            except Exception as e:
+                logger.warning(f"⚠ Failed to load account info: {e}")
+                self.binance_available = False
         
-        # Get initial portfolio value
-        self.metrics["current_value"] = await self.binance.get_portfolio_value()
-        self.metrics["peak_value"] = self.metrics["current_value"]
-        logger.info(f"✓ Portfolio value: ${self.metrics['current_value']:,.2f}")
+        if not self.binance_available:
+            logger.warning("⚠ Running in DEMO MODE - no real trading")
+            self.metrics["current_value"] = 10000.0  # Demo balance
+            self.metrics["peak_value"] = 10000.0
         
         logger.info("Trading engine initialized successfully")
     
@@ -482,8 +506,17 @@ class TradingEngine:
         # Get market data
         market_data = await self.get_market_data(symbol)
         
-        # Get AI analysis
-        analysis = await self.deepseek.analyze_market(**market_data)
+        # Get AI analysis if available, otherwise use basic analysis
+        if self.deepseek_available:
+            try:
+                # Remove fields not accepted by analyze_market
+                ai_data = {k: v for k, v in market_data.items() if k != 'timestamp'}
+                analysis = await self.deepseek.analyze_market(**ai_data)
+            except Exception as e:
+                logger.warning(f"AI analysis failed for {symbol}: {e}, using basic analysis")
+                analysis = self._basic_technical_analysis(market_data)
+        else:
+            analysis = self._basic_technical_analysis(market_data)
         
         # Apply risk management filters
         decision = self._apply_risk_filters(analysis, symbol, market_data['current_price'])
@@ -514,6 +547,41 @@ class TradingEngine:
         self.ai_thoughts.insert(0, thought)
         if len(self.ai_thoughts) > 50:
             self.ai_thoughts.pop()
+    
+    def _basic_technical_analysis(self, market_data: Dict) -> Dict:
+        """Basic technical analysis fallback when AI is unavailable."""
+        indicators = market_data.get('indicators', {})
+        current_price = market_data.get('current_price', 0)
+        
+        # Simple RSI-based strategy
+        rsi = indicators.get('rsi', 50)
+        sma_20 = indicators.get('sma_20', current_price)
+        
+        action = "HOLD"
+        confidence = 0.3  # Low confidence for basic analysis
+        reasoning = "Basic technical analysis (AI unavailable): "
+        
+        if rsi < 30 and current_price < sma_20:
+            action = "BUY"
+            confidence = 0.4
+            reasoning += f"Oversold (RSI: {rsi:.1f}) and below SMA20"
+        elif rsi > 70 and current_price > sma_20:
+            action = "SELL"
+            confidence = 0.4
+            reasoning += f"Overbought (RSI: {rsi:.1f}) and above SMA20"
+        else:
+            reasoning += f"Neutral signals (RSI: {rsi:.1f})"
+        
+        return {
+            "action": action,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "sentiment": "NEUTRAL",
+            "stop_loss_percent": self.stop_loss_percent,
+            "take_profit_percent": self.take_profit_percent,
+            "entry_targets": [],
+            "key_levels": []
+        }
     
     def _apply_risk_filters(
         self,
@@ -589,6 +657,11 @@ class TradingEngine:
         Returns:
             Trade object if successful, None otherwise
         """
+        # Skip trading if not connected to Binance
+        if not self.binance_available:
+            logger.info(f"DEMO MODE: Would execute {action} for {symbol}")
+            return None
+        
         try:
             # Calculate position size
             portfolio_value = await self.binance.get_portfolio_value()
@@ -707,13 +780,18 @@ class TradingEngine:
             try:
                 current_time = datetime.utcnow()
                 
-                # Update portfolio value
-                self.metrics['current_value'] = await self.binance.get_portfolio_value()
-                if self.metrics['current_value'] > self.metrics['peak_value']:
-                    self.metrics['peak_value'] = self.metrics['current_value']
+                # Update portfolio value (if Binance available)
+                if self.binance_available:
+                    try:
+                        self.metrics['current_value'] = await self.binance.get_portfolio_value()
+                        if self.metrics['current_value'] > self.metrics['peak_value']:
+                            self.metrics['peak_value'] = self.metrics['current_value']
+                    except Exception as e:
+                        logger.warning(f"Failed to get portfolio value: {e}")
                 
-                # Check stop loss / take profit
-                await self.check_stop_loss_take_profit()
+                # Check stop loss / take profit (if Binance available)
+                if self.binance_available:
+                    await self.check_stop_loss_take_profit()
                 
                 # Perform analysis if interval has passed
                 if (current_time - last_analysis_time).total_seconds() >= analysis_interval:

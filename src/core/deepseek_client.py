@@ -122,7 +122,7 @@ class DeepSeekClient:
         self._session: Optional[aiohttp.ClientSession] = None
         self._session_lock = asyncio.Lock()
         
-        # Timeout configuration
+        # Timeout configuration (increased to 60s)
         self._timeout = aiohttp.ClientTimeout(total=60, connect=10)
         
         # Rate limiter (adjust based on your API tier)
@@ -135,7 +135,16 @@ class DeepSeekClient:
         # Health tracking
         self._consecutive_errors = 0
         self._last_successful_call: Optional[datetime] = None
+        self._last_health_check: Optional[datetime] = None
         self._is_healthy = True
+        
+        # AI Fallback tracking
+        self._model_usage_stats = {
+            "deepseek": 0,
+            "gpt4": 0,
+            "claude": 0,
+            "fallback": 0
+        }
         
         logger.info(f"DeepSeekClient initialized - Model: {self.model}")
     
@@ -418,6 +427,103 @@ Respond in the following JSON format ONLY:
             "timestamp": datetime.utcnow().isoformat()
         }
     
+    async def generate_trading_signals(
+        self,
+        symbol: str,
+        market_data: Dict,
+        portfolio_context: Dict,
+        sentiment_data: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Generate actionable trading signals, not just HOLD recommendations.
+        
+        Args:
+            symbol: Trading pair
+            market_data: Comprehensive market data
+            portfolio_context: Current portfolio state
+            sentiment_data: Optional sentiment analysis from social media/news
+            
+        Returns:
+            Actionable trading signal with specific parameters
+        """
+        prompt = f"""
+Analyze the following market data and generate a specific trading signal.
+
+Symbol: {symbol}
+Current Price: ${market_data.get('price', 0):,.2f}
+24h Change: {market_data.get('change_24h', 0):+.2f}%
+Volume: ${market_data.get('volume_24h', 0):,.0f}
+
+Technical Indicators:
+{json.dumps(market_data.get('indicators', {}), indent=2)}
+
+Portfolio Context:
+Available Capital: ${portfolio_context.get('available_capital', 0):,.2f}
+Current Position: {portfolio_context.get('current_position', 'None')}
+Risk Tolerance: {portfolio_context.get('risk_level', 'MODERATE')}
+"""
+        
+        if sentiment_data:
+            prompt += f"""
+Sentiment Analysis:
+{json.dumps(sentiment_data, indent=2)}
+"""
+        
+        prompt += """
+Provide a trading signal in this JSON format:
+{
+    "action": "BUY|SELL|HOLD",
+    "confidence": 0.0-1.0,
+    "entry_price": number,
+    "position_size_percent": 1-10,
+    "stop_loss": number,
+    "take_profit": number,
+    "take_profit_partial": [{"price": number, "percent": 25-50}],
+    "hold_duration": "SHORT|MEDIUM|LONG",
+    "reasoning": "detailed explanation",
+    "risk_factors": ["factor1", "factor2"]
+}
+"""
+        
+        messages = [
+            {"role": "system", "content": AI_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
+        
+        try:
+            response = await self._chat_completion(
+                messages=messages,
+                temperature=0.2,  # Lower temperature for more consistent signals
+                max_tokens=1500
+            )
+            
+            content = response['choices'][0]['message']['content']
+            if '```json' in content:
+                content = content.split('```json')[1].split('```')[0]
+            elif '```' in content:
+                content = content.split('```')[1].split('```')[0]
+            
+            signal = json.loads(content.strip())
+            signal['timestamp'] = datetime.utcnow().isoformat()
+            signal['model_used'] = 'deepseek'
+            self._model_usage_stats['deepseek'] += 1
+            
+            logger.info(f"Generated trading signal for {symbol}: {signal['action']} "
+                       f"(confidence: {signal['confidence']:.2f})")
+            
+            return signal
+            
+        except Exception as e:
+            logger.error(f"Failed to generate trading signal: {e}")
+            self._model_usage_stats['fallback'] += 1
+            return {
+                "action": "HOLD",
+                "confidence": 0.0,
+                "reasoning": f"Failed to generate signal: {str(e)}",
+                "timestamp": datetime.utcnow().isoformat(),
+                "model_used": "fallback"
+            }
+    
     async def get_multi_symbol_analysis(
         self,
         symbols_data: List[Dict]
@@ -498,6 +604,56 @@ Provide a professional, concise summary.
         except Exception as e:
             logger.error(f"Failed to generate market summary: {e}")
             return "Unable to generate market summary at this time."
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Perform periodic health check (every 5 minutes).
+        
+        Returns:
+            Health status dictionary
+        """
+        now = datetime.utcnow()
+        
+        # Only check if 5 minutes passed since last check
+        if self._last_health_check:
+            elapsed = (now - self._last_health_check).total_seconds()
+            if elapsed < 300:  # 5 minutes
+                return {
+                    "healthy": self._is_healthy,
+                    "last_check": self._last_health_check.isoformat(),
+                    "consecutive_errors": self._consecutive_errors
+                }
+        
+        try:
+            success = await self.test_connection()
+            if success:
+                self._is_healthy = True
+                self._consecutive_errors = 0
+                logger.info("Health check passed")
+            else:
+                self._consecutive_errors += 1
+                if self._consecutive_errors >= 3:
+                    self._is_healthy = False
+                logger.warning(f"Health check failed (errors: {self._consecutive_errors})")
+            
+            self._last_health_check = now
+            
+            return {
+                "healthy": self._is_healthy,
+                "last_check": self._last_health_check.isoformat(),
+                "consecutive_errors": self._consecutive_errors,
+                "last_successful_call": self._last_successful_call.isoformat() if self._last_successful_call else None,
+                "model_usage": self._model_usage_stats
+            }
+            
+        except Exception as e:
+            logger.error(f"Health check error: {e}")
+            self._is_healthy = False
+            return {
+                "healthy": False,
+                "error": str(e),
+                "last_check": now.isoformat()
+            }
     
     async def test_connection(self) -> bool:
         """Test API connectivity."""

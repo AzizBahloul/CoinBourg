@@ -447,7 +447,51 @@ class BinanceClient:
             params={"symbol": symbol, "limit": limit}
         )
     
- 
+    async def get_historical_klines(
+        self,
+        symbol: str,
+        interval: str = "1d",
+        limit: int = 30,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None
+    ) -> List[List]:
+        """
+        Get historical kline/candlestick data (30-90 days).
+        
+        Args:
+            symbol: Trading pair symbol
+            interval: Kline interval (1m, 5m, 15m, 1h, 4h, 1d, 1w)
+            limit: Number of klines (max 1000)
+            start_time: Start datetime
+            end_time: End datetime
+            
+        Returns:
+            List of klines with OHLCV data
+        """
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "limit": min(limit, 1000)
+        }
+        
+        if start_time:
+            params['startTime'] = int(start_time.timestamp() * 1000)
+        if end_time:
+            params['endTime'] = int(end_time.timestamp() * 1000)
+        
+        return await self._request("GET", "/api/v3/klines", params=params)
+    
+    async def get_24h_tickers(self) -> List[Dict]:
+        """Get 24h ticker data for all symbols."""
+        return await self._request("GET", "/api/v3/ticker/24hr")
+    
+    async def get_ticker(self, symbol: str) -> Dict:
+        """Get 24h ticker data for a symbol."""
+        return await self._request(
+            "GET",
+            "/api/v3/ticker/24hr",
+            params={"symbol": symbol}
+        )
     
     async def get_account(self) -> Dict:
         """Get current account information including balances."""
@@ -643,6 +687,147 @@ class BinanceClient:
             params={"symbol": symbol},
             signed=True
         )
+    
+    async def create_oco_order(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        price: float,
+        stop_price: float,
+        stop_limit_price: float,
+        stop_limit_time_in_force: str = "GTC"
+    ) -> Dict:
+        """
+        Create OCO (One-Cancels-the-Other) order.
+        
+        Args:
+            symbol: Trading pair
+            side: BUY or SELL
+            quantity: Order quantity
+            price: Limit order price (take profit)
+            stop_price: Stop loss trigger price
+            stop_limit_price: Stop loss limit price
+            stop_limit_time_in_force: Time in force for stop limit
+            
+        Returns:
+            OCO order response
+        """
+        await self.get_symbol_info(symbol)
+        
+        params = {
+            "symbol": symbol,
+            "side": side.upper(),
+            "quantity": self._round_quantity(symbol, quantity),
+            "price": self._round_price(symbol, price),
+            "stopPrice": self._round_price(symbol, stop_price),
+            "stopLimitPrice": self._round_price(symbol, stop_limit_price),
+            "stopLimitTimeInForce": stop_limit_time_in_force
+        }
+        
+        logger.info(f"Creating OCO order: {params}")
+        
+        return await self._request(
+            "POST",
+            "/api/v3/order/oco",
+            params=params,
+            signed=True
+        )
+    
+    async def cancel_oco_order(self, symbol: str, order_list_id: int) -> Dict:
+        """Cancel an OCO order."""
+        return await self._request(
+            "DELETE",
+            "/api/v3/orderList",
+            params={"symbol": symbol, "orderListId": order_list_id},
+            signed=True
+        )
+    
+    async def create_twap_order(
+        self,
+        symbol: str,
+        side: str,
+        total_quantity: float,
+        num_chunks: int = 10,
+        interval_seconds: int = 60
+    ) -> List[Dict]:
+        """
+        Execute TWAP (Time-Weighted Average Price) order.
+        
+        Splits large order into smaller chunks executed over time.
+        
+        Args:
+            symbol: Trading pair
+            side: BUY or SELL
+            total_quantity: Total quantity to trade
+            num_chunks: Number of chunks to split into
+            interval_seconds: Seconds between each chunk
+            
+        Returns:
+            List of order responses
+        """
+        chunk_size = total_quantity / num_chunks
+        orders = []
+        
+        logger.info(f"Starting TWAP order: {total_quantity} {symbol} in {num_chunks} chunks")
+        
+        for i in range(num_chunks):
+            try:
+                # Place market order for chunk
+                if side.upper() == "BUY":
+                    order = await self.market_buy(symbol, quantity=chunk_size)
+                else:
+                    order = await self.market_sell(symbol, quantity=chunk_size)
+                
+                orders.append(order)
+                logger.info(f"TWAP chunk {i+1}/{num_chunks} executed: {order.get('orderId')}")
+                
+                # Wait before next chunk (except for last one)
+                if i < num_chunks - 1:
+                    await asyncio.sleep(interval_seconds)
+                    
+            except Exception as e:
+                logger.error(f"TWAP chunk {i+1} failed: {e}")
+                # Continue with remaining chunks
+        
+        logger.info(f"TWAP order completed: {len(orders)}/{num_chunks} chunks executed")
+        return orders
+    
+    async def check_slippage(
+        self,
+        symbol: str,
+        side: str,
+        expected_price: float,
+        max_slippage_percent: float = 0.5
+    ) -> Tuple[bool, float, str]:
+        """
+        Check if current price is within acceptable slippage range.
+        
+        Args:
+            symbol: Trading pair
+            side: BUY or SELL
+            expected_price: Expected execution price
+            max_slippage_percent: Maximum acceptable slippage percentage
+            
+        Returns:
+            (is_acceptable, current_price, message)
+        """
+        current_price = await self.get_ticker_price(symbol)
+        
+        if side.upper() == "BUY":
+            # For buy, price going up is bad
+            slippage = ((current_price - expected_price) / expected_price) * 100
+        else:
+            # For sell, price going down is bad
+            slippage = ((expected_price - current_price) / expected_price) * 100
+        
+        is_acceptable = abs(slippage) <= max_slippage_percent
+        
+        message = f"Slippage: {slippage:+.2f}% (limit: {max_slippage_percent}%)"
+        if not is_acceptable:
+            message += " - EXCEEDED"
+        
+        return is_acceptable, current_price, message
     
     async def get_order(self, symbol: str, order_id: int) -> Dict:
         """Get order status."""

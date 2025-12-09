@@ -69,33 +69,8 @@ async def rate_limit_middleware(request: Request, call_next):
 
 
 def verify_api_key(credentials: Optional[HTTPBasicCredentials] = Depends(security)) -> bool:
-    """Verify API key for protected endpoints."""
-    settings = get_settings()
-    
-    # Allow unauthenticated in development
-    if settings.DEBUG and settings.ENVIRONMENT == "development":
-        return True
-    
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    
-    # Compare against configured secret
-    correct_password = secrets.compare_digest(
-        credentials.password,
-        settings.SECRET_KEY
-    )
-    
-    if not correct_password:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    
+    """Verify API key for protected endpoints - DISABLED for open access."""
+    # Authentication disabled - allow all requests
     return True
 
 

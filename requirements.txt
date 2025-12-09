@@ -27,6 +27,7 @@ python-dotenv==1.0.0
 # Database
 # ===========================================
 asyncpg==0.29.0
+psycopg2-binary==2.9.9
 sqlalchemy[asyncio]==2.0.25
 alembic==1.13.1
 redis==5.0.1
@@ -41,13 +42,27 @@ numpy==1.26.3
 # ===========================================
 # Technical Analysis
 # ===========================================
+ta==0.11.0
 # ta-lib==0.4.28  # Optional - requires system lib, uncomment if needed
 # pandas-ta>=0.3.14b0  # Optional - uncomment if needed
 
 # ===========================================
-# Binance API
+# Binance API & Multi-Exchange
 # ===========================================
 python-binance==1.0.19
+ccxt==4.2.25
+
+# ===========================================
+# WebSocket Support
+# ===========================================
+websockets==12.0
+
+# ===========================================
+# Machine Learning
+# ===========================================
+scikit-learn==1.4.0
+xgboost==2.0.3
+# tensorflow==2.15.0  # Optional - uncomment if using LSTM models
 
 # ===========================================
 # Security

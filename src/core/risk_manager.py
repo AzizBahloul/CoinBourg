@@ -92,6 +92,15 @@ class RiskState:
     last_trade_time: Optional[datetime] = None
     consecutive_losses: int = 0
     daily_reset_time: datetime = field(default_factory=datetime.utcnow)
+    
+    # Drawdown circuit breakers
+    hourly_pnl: float = 0.0
+    hourly_reset_time: datetime = field(default_factory=datetime.utcnow)
+    hourly_drawdown: float = 0.0
+    daily_drawdown: float = 0.0
+    trading_paused: bool = False
+    pause_reason: Optional[str] = None
+    pause_until: Optional[datetime] = None
 
 
 class RiskManager:
@@ -190,7 +199,70 @@ class RiskManager:
             logger.info("Daily reset triggered - resetting daily counters")
             self.state.daily_pnl = 0.0
             self.state.daily_trades = 0
+            self.state.daily_drawdown = 0.0
             self.state.daily_reset_time = now
+            
+            # Resume trading if paused due to daily limits
+            if self.state.trading_paused and "daily" in str(self.state.pause_reason).lower():
+                self.resume_trading()
+        
+        # Check hourly reset
+        if (now - self.state.hourly_reset_time).total_seconds() >= 3600:
+            logger.debug("Hourly reset triggered")
+            self.state.hourly_pnl = 0.0
+            self.state.hourly_drawdown = 0.0
+            self.state.hourly_reset_time = now
+            
+            # Resume trading if paused due to hourly limits
+            if self.state.trading_paused and "hourly" in str(self.state.pause_reason).lower():
+                self.resume_trading()
+    
+    def _check_drawdown_circuit_breakers(self) -> Tuple[bool, Optional[str]]:
+        """
+        Check if drawdown circuit breakers should trigger.
+        
+        Returns:
+            Tuple of (should_pause, reason)
+        """
+        # Hourly drawdown limit: -10%
+        hourly_limit = 10.0
+        if self.state.hourly_drawdown <= -hourly_limit:
+            return True, f"Hourly drawdown limit reached ({self.state.hourly_drawdown:.2f}%)"
+        
+        # Daily drawdown limit: -20%
+        daily_limit = 20.0
+        if self.state.daily_drawdown <= -daily_limit:
+            return True, f"Daily drawdown limit reached ({self.state.daily_drawdown:.2f}%)"
+        
+        return False, None
+    
+    def pause_trading(self, reason: str, duration_hours: float = 1.0) -> None:
+        """
+        Pause all trading temporarily.
+        
+        Args:
+            reason: Reason for pause
+            duration_hours: Hours to pause (default: 1 hour)
+        """
+        self.state.trading_paused = True
+        self.state.pause_reason = reason
+        self.state.pause_until = datetime.utcnow() + timedelta(hours=duration_hours)
+        
+        logger.warning(f"TRADING PAUSED: {reason} (until {self.state.pause_until})")
+    
+    def resume_trading(self) -> None:
+        """Resume trading after pause."""
+        if self.state.trading_paused:
+            self.state.trading_paused = False
+            self.state.pause_reason = None
+            self.state.pause_until = None
+            logger.info("Trading resumed")
+    
+    def check_pause_expiry(self) -> None:
+        """Check if pause period has expired."""
+        if self.state.trading_paused and self.state.pause_until:
+            if datetime.utcnow() >= self.state.pause_until:
+                self.resume_trading()
     
     def can_open_trade(
         self,
@@ -203,6 +275,17 @@ class RiskManager:
         Returns:
             Tuple of (can_trade, reason)
         """
+        # Check if trading is paused
+        self.check_pause_expiry()
+        if self.state.trading_paused:
+            return False, f"Trading paused: {self.state.pause_reason}"
+        
+        # Check drawdown circuit breakers
+        should_pause, pause_reason = self._check_drawdown_circuit_breakers()
+        if should_pause:
+            self.pause_trading(pause_reason, duration_hours=1.0)
+            return False, pause_reason
+        
         # Check AI confidence threshold
         if ai_confidence < self.config["min_confidence_threshold"]:
             return False, f"AI confidence {ai_confidence:.2%} below minimum {self.config['min_confidence_threshold']:.2%}"
@@ -253,7 +336,8 @@ class RiskManager:
         self,
         symbol: str,
         current_price: float,
-        ai_confidence: float
+        ai_confidence: float,
+        method: str = "fixed_percent"
     ) -> float:
         """
         Calculate the optimal position size based on risk parameters
@@ -262,6 +346,7 @@ class RiskManager:
             symbol: Trading pair symbol
             current_price: Current asset price
             ai_confidence: AI model confidence (0-1)
+            method: Position sizing method (fixed_percent, kelly, anti_martingale)
             
         Returns:
             Position size in base currency (e.g., BTC amount)
@@ -270,6 +355,19 @@ class RiskManager:
             logger.warning("No available balance for position sizing")
             return 0.0
         
+        if method == "kelly":
+            # Kelly Criterion: f = (bp - q) / b
+            # f = fraction to bet, b = odds, p = win prob, q = loss prob
+            return self._kelly_criterion_size(symbol, current_price, ai_confidence)
+        elif method == "anti_martingale":
+            # Increase position size after wins, decrease after losses
+            return self._anti_martingale_size(symbol, current_price, ai_confidence)
+        else:
+            # Default: fixed percentage with adjustments
+            return self._fixed_percent_size(symbol, current_price, ai_confidence)
+    
+    def _fixed_percent_size(self, symbol: str, current_price: float, ai_confidence: float) -> float:
+        """Fixed percentage position sizing with adjustments."""
         # Base position size as percentage of portfolio
         base_percent = self.config["max_position_size_percent"]
         
@@ -300,36 +398,135 @@ class RiskManager:
         
         logger.info(
             f"Position size for {symbol}: {quantity:.6f} "
-            f"(Value: ${position_value:.2f}, "
-            f"Confidence: {ai_confidence:.2%}, "
-            f"Adjusted %: {adjusted_percent:.2f}%)"
+            f"(Value: ${position_value:.2f}, Method: fixed_percent, "
+            f"Confidence: {ai_confidence:.2%}, Adjusted %: {adjusted_percent:.2f}%)"
         )
         
         return quantity
+    
+    def _kelly_criterion_size(self, symbol: str, current_price: float, ai_confidence: float) -> float:
+        """Kelly Criterion position sizing."""
+        # Estimate win probability from trade history
+        if len(self.trade_history) < 10:
+            # Not enough history, fall back to fixed percent
+            return self._fixed_percent_size(symbol, current_price, ai_confidence)
+        
+        recent_trades = self.trade_history[-20:]  # Last 20 trades
+        wins = [t for t in recent_trades if t.pnl > 0]
+        losses = [t for t in recent_trades if t.pnl <= 0]
+        
+        if not wins or not losses:
+            return self._fixed_percent_size(symbol, current_price, ai_confidence)
+        
+        # Calculate probabilities and averages
+        win_prob = len(wins) / len(recent_trades)
+        loss_prob = 1 - win_prob
+        
+        avg_win = sum(abs(t.pnl_percent) for t in wins) / len(wins)
+        avg_loss = sum(abs(t.pnl_percent) for t in losses) / len(losses)
+        
+        # Kelly fraction: f = (bp - q) / b
+        # where b = avg_win/avg_loss, p = win_prob, q = loss_prob
+        if avg_loss == 0:
+            return self._fixed_percent_size(symbol, current_price, ai_confidence)
+        
+        odds = avg_win / avg_loss
+        kelly_fraction = (odds * win_prob - loss_prob) / odds
+        
+        # Apply safety factor (1/2 Kelly or 1/4 Kelly)
+        kelly_fraction = kelly_fraction * 0.25  # Quarter Kelly (conservative)
+        kelly_fraction = max(0.0, min(kelly_fraction, 0.10))  # Cap at 10%
+        
+        # Adjust by AI confidence
+        kelly_fraction *= (0.5 + ai_confidence * 0.5)
+        
+        position_value = self.state.available_balance * kelly_fraction
+        quantity = position_value / current_price if current_price > 0 else 0.0
+        
+        logger.info(
+            f"Kelly position size for {symbol}: {quantity:.6f} "
+            f"(Kelly%: {kelly_fraction*100:.2f}%, WinProb: {win_prob:.2f}, "
+            f"Odds: {odds:.2f})"
+        )
+        
+        return quantity
+    
+    def _anti_martingale_size(self, symbol: str, current_price: float, ai_confidence: float) -> float:
+        """Anti-Martingale position sizing (increase after wins, decrease after losses)."""
+        base_size = self._fixed_percent_size(symbol, current_price, ai_confidence)
+        
+        # Check recent performance
+        if len(self.trade_history) == 0:
+            return base_size
+        
+        recent_trades = self.trade_history[-5:]  # Last 5 trades
+        winning_streak = 0
+        losing_streak = 0
+        
+        for trade in reversed(recent_trades):
+            if trade.pnl > 0:
+                if losing_streak == 0:
+                    winning_streak += 1
+                else:
+                    break
+            else:
+                if winning_streak == 0:
+                    losing_streak += 1
+                else:
+                    break
+        
+        # Increase size after wins (max 1.5x)
+        if winning_streak > 0:
+            multiplier = 1.0 + (winning_streak * 0.1)
+            multiplier = min(multiplier, 1.5)
+            return base_size * multiplier
+        
+        # Decrease size after losses (min 0.5x)
+        if losing_streak > 0:
+            multiplier = 1.0 - (losing_streak * 0.1)
+            multiplier = max(multiplier, 0.5)
+            return base_size * multiplier
+        
+        return base_size
     
     def calculate_stop_loss(
         self,
         entry_price: float,
         side: OrderSide,
-        volatility_factor: float = 1.0
+        volatility_factor: float = 1.0,
+        atr: Optional[float] = None
     ) -> float:
         """
-        Calculate stop-loss price
+        Calculate stop-loss price (fixed or ATR-based)
         
         Args:
             entry_price: Entry price of the position
             side: BUY or SELL
             volatility_factor: Multiplier based on current volatility (default: 1.0)
+            atr: Average True Range for dynamic stop loss
             
         Returns:
             Stop-loss price
         """
-        stop_percent = self.config["stop_loss_percent"] * volatility_factor
-        
-        if side == OrderSide.BUY:
-            stop_loss = entry_price * (1 - stop_percent / 100)
+        if atr is not None:
+            # ATR-based dynamic stop loss (2x ATR)
+            atr_multiplier = 2.0
+            stop_distance = atr * atr_multiplier
+            
+            if side == OrderSide.BUY:
+                stop_loss = entry_price - stop_distance
+            else:
+                stop_loss = entry_price + stop_distance
+            
+            logger.debug(f"ATR-based stop: {stop_loss:.2f} (ATR: {atr:.2f})")
         else:
-            stop_loss = entry_price * (1 + stop_percent / 100)
+            # Fixed percentage stop loss
+            stop_percent = self.config["stop_loss_percent"] * volatility_factor
+            
+            if side == OrderSide.BUY:
+                stop_loss = entry_price * (1 - stop_percent / 100)
+            else:
+                stop_loss = entry_price * (1 + stop_percent / 100)
         
         return stop_loss
     
@@ -442,7 +639,14 @@ class RiskManager:
         # Update state
         self.trade_history.append(trade)
         self.state.daily_pnl += pnl
+        self.state.hourly_pnl += pnl
         self.state.last_trade_time = exit_time
+        
+        # Update drawdowns
+        self.state.daily_drawdown = (self.state.daily_pnl / self.state.peak_portfolio_value * 100) \
+            if self.state.peak_portfolio_value > 0 else 0
+        self.state.hourly_drawdown = (self.state.hourly_pnl / self.state.peak_portfolio_value * 100) \
+            if self.state.peak_portfolio_value > 0 else 0
         
         # Update consecutive losses
         if pnl < 0:
