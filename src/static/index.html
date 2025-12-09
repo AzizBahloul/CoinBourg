@@ -435,7 +435,7 @@
 
                 async toggleBot() {
                     const action = this.status.is_running ? 'stop' : 'start';
-                    await fetch(\`/api/bot/\${action}\`, { method: 'POST' });
+                    await fetch(`/api/bot/${action}`, { method: 'POST' });
                     await this.fetchStatus();
                 },
 
@@ -476,7 +476,7 @@
                     this.performanceChart = new Chart(ctx, {
                         type: 'line',
                         data: {
-                            labels: Array.from({length: 24}, (_, i) => \`\${i}:00\`),
+                            labels: Array.from({length: 24}, (_, i) => `${i}:00`),
                             datasets: [{
                                 label: 'Portfolio',
                                 data: Array.from({length: 24}, () => Math.random() * 1000 + 9000),
@@ -502,9 +502,9 @@
                     if (!ts) return '';
                     const d = new Date(ts);
                     const diff = Math.floor((new Date() - d) / 1000);
-                    if (diff < 60) return \`\${diff}s ago\`;
-                    if (diff < 3600) return \`\${Math.floor(diff / 60)}m ago\`;
-                    if (diff < 86400) return \`\${Math.floor(diff / 3600)}h ago\`;
+                    if (diff < 60) return `${diff}s ago`;
+                    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
                     return d.toLocaleDateString();
                 }
             }
