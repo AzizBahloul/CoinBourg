@@ -43,36 +43,34 @@ jobs:
             
             cd CoinBourg
             
-            # Create .env file
+            # Create .env file from secrets
             echo "Creating .env file..."
-            cat > .env << 'EOF'
-            APP_NAME=CoinBourg AI Trading Bot
-            APP_VERSION=1.0.0
-            DEBUG=false
-            ENVIRONMENT=production
-            DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}
-            DEEPSEEK_BASE_URL=https://api.deepseek.com
-            DEEPSEEK_MODEL=deepseek-chat
-            BINANCE_API_KEY=${{ secrets.BINANCE_API_KEY }}
-            BINANCE_API_SECRET=${{ secrets.BINANCE_API_SECRET }}
-            BINANCE_TESTNET=false
-            DATABASE_URL=postgresql://coinbourg:coinbourg_secure_password@db:5432/coinbourg
-            REDIS_URL=redis://redis:6379/0
-            RISK_LEVEL=CONSERVATIVE
-            MAX_POSITION_SIZE_PERCENT=5.0
-            MAX_DAILY_TRADES=10
-            STOP_LOSS_PERCENT=2.0
-            TAKE_PROFIT_PERCENT=4.0
-            MAX_DRAWDOWN_PERCENT=10.0
-            TRADING_PAIRS=["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
-            BASE_CURRENCY=USDT
-            ANALYSIS_INTERVAL_SECONDS=300
-            PRICE_CHECK_INTERVAL_SECONDS=10
-            API_HOST=0.0.0.0
-            API_PORT=8000
-            SECRET_KEY=${{ secrets.APP_SECRET_KEY }}
-            LOG_LEVEL=INFO
-            EOF
+            echo "APP_NAME=CoinBourg AI Trading Bot" > .env
+            echo "APP_VERSION=1.0.0" >> .env
+            echo "DEBUG=false" >> .env
+            echo "ENVIRONMENT=production" >> .env
+            echo "DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}" >> .env
+            echo "DEEPSEEK_BASE_URL=https://api.deepseek.com" >> .env
+            echo "DEEPSEEK_MODEL=deepseek-chat" >> .env
+            echo "BINANCE_API_KEY=${{ secrets.BINANCE_API_KEY }}" >> .env
+            echo "BINANCE_API_SECRET=${{ secrets.BINANCE_API_SECRET }}" >> .env
+            echo "BINANCE_TESTNET=false" >> .env
+            echo "DATABASE_URL=postgresql://coinbourg:coinbourg_secure_password@db:5432/coinbourg" >> .env
+            echo "REDIS_URL=redis://redis:6379/0" >> .env
+            echo "RISK_LEVEL=CONSERVATIVE" >> .env
+            echo "MAX_POSITION_SIZE_PERCENT=5.0" >> .env
+            echo "MAX_DAILY_TRADES=10" >> .env
+            echo "STOP_LOSS_PERCENT=2.0" >> .env
+            echo "TAKE_PROFIT_PERCENT=4.0" >> .env
+            echo "MAX_DRAWDOWN_PERCENT=10.0" >> .env
+            echo 'TRADING_PAIRS=["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]' >> .env
+            echo "BASE_CURRENCY=USDT" >> .env
+            echo "ANALYSIS_INTERVAL_SECONDS=300" >> .env
+            echo "PRICE_CHECK_INTERVAL_SECONDS=10" >> .env
+            echo "API_HOST=0.0.0.0" >> .env
+            echo "API_PORT=8000" >> .env
+            echo "SECRET_KEY=${{ secrets.APP_SECRET_KEY }}" >> .env
+            echo "LOG_LEVEL=INFO" >> .env
             
             # Validate .env file syntax before deployment
             echo "Validating .env file syntax..."
@@ -87,39 +85,70 @@ jobs:
             fi
             
             # Restart application
-            echo "Restarting Docker containers..."
+            echo "Stopping existing containers..."
             docker compose down || true
+            
+            echo "Starting containers..."
             docker compose up -d --build
             
             # Wait for containers to start
-            echo "Waiting for containers to initialize..."
-            sleep 15
+            echo "Waiting for containers to initialize (30s)..."
+            sleep 30
             
-            # Validate container health
-            echo "Validating container health..."
-            if ! docker compose ps | grep -q "healthy"; then
-              echo "WARNING: Not all containers are healthy yet, checking logs..."
-              docker compose logs --tail=20 | tail -30
+            # Show container status
+            echo "=== Container Status ==="
+            docker compose ps
+            
+            # Check individual services
+            echo ""
+            echo "=== Checking Services ==="
+            
+            # Check PostgreSQL
+            if docker compose exec -T db pg_isready -U coinbourg > /dev/null 2>&1; then
+              echo "✓ PostgreSQL is ready"
+            else
+              echo "✗ PostgreSQL is not ready"
             fi
             
-            # Check if app is responding
-            echo "Checking if app is responding..."
+            # Check Redis
+            if docker compose exec -T redis redis-cli ping > /dev/null 2>&1; then
+              echo "✓ Redis is ready"
+            else
+              echo "✗ Redis is not ready"
+            fi
+            
+            # Check application
+            echo ""
+            echo "=== Checking Application Health ==="
             for i in {1..10}; do
               if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                echo "✓ App is healthy and responding"
+                echo "✓ CoinBourg API is healthy and responding on port 8000"
+                curl -s http://localhost:8000/health | head -3
                 break
               fi
-              if [ $i -lt 10 ]; then
-                echo "Attempt $i: Waiting for app to respond..."
+              if [ $i -eq 10 ]; then
+                echo "✗ App failed to respond after 10 attempts"
+                echo "=== Application Logs ==="
+                docker compose logs --tail=30 coinbourg
+              else
+                echo "Attempt $i/10: Waiting for app..."
                 sleep 3
               fi
             done
             
-            # Show final status
-            echo "=== Deployment complete ==="
-            docker compose ps
-            echo "=== Recent logs ==="
-            docker compose logs --tail=10 coinbourg-bot
+            # Check port accessibility
+            echo ""
+            echo "=== Port Status ==="
+            netstat -tuln | grep -E ':(8000|5432|6379)' || echo "Checking ports..."
+            
+            # Show recent logs
+            echo ""
+            echo "=== Recent Application Logs ==="
+            docker compose logs --tail=20 coinbourg
+            
+            echo ""
+            echo "=== Deployment Complete ==="
+            echo "Access the application at: http://4.235.122.138:8000"
           DEPLOY
           
           echo "✓ Deployment successful!"

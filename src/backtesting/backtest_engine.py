@@ -1,8 +1,3 @@
-"""
-Backtesting Engine
-==================
-Comprehensive backtesting system for strategy validation.
-"""
 
 import asyncio
 import logging
