@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoinBourg - AI Trading Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); }
+        .gradient-bg { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+        .card-gradient { background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%); }
+        .glow { box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-pulse-slow { animation: pulse 3s infinite; }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white" x-data="dashboard()">
+    <!-- Header -->
+    <header class="glass border-b border-white/10 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold">CoinBourg</h1>
+                    <p class="text-xs text-gray-400">AI Trading Bot</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2" :class="status.is_running ? 'text-green-400' : 'text-red-400'">
+                    <div class="w-2 h-2 rounded-full" :class="status.is_running ? 'bg-green-400 animate-pulse-slow' : 'bg-red-400'"></div>
+                    <span class="text-sm" x-text="status.is_running ? 'Running' : 'Stopped'"></span>
+                </div>
+                <button @click="toggleBot()" 
+                    class="px-4 py-2 rounded-lg font-medium transition-all"
+                    :class="status.is_running ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'">
+                    <span x-text="status.is_running ? 'Stop Bot' : 'Start Bot'"></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <!-- Portfolio Value -->
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-gray-400 text-sm">Portfolio Value</span>
+                    <div class="w-10 h-10 bg-indigo-500/20 rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold mb-1" x-text="'$' + status.portfolio_value?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'"></div>
+                <div class="text-sm" :class="status.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                    <span x-text="(status.total_pnl >= 0 ? '+' : '') + (status.total_pnl?.toFixed(2) || '0.00')"></span> USDT
+                </div>
+            </div>
+
+            <!-- Win Rate -->
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-gray-400 text-sm">Win Rate</span>
+                    <div class="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold mb-1" x-text="(status.win_rate?.toFixed(1) || '0.0') + '%'"></div>
+                <div class="text-sm text-gray-400">
+                    <span class="text-green-400" x-text="status.winning_trades || 0"></span> W / 
+                    <span class="text-red-400" x-text="status.losing_trades || 0"></span> L
+                </div>
+            </div>
+
+            <!-- Total Trades -->
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-gray-400 text-sm">Total Trades</span>
+                    <div class="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold mb-1" x-text="status.total_trades || 0"></div>
+                <div class="text-sm text-gray-400">
+                    Today: <span class="text-white" x-text="status.daily_trades || 0"></span>/<span x-text="status.max_daily_trades || 10"></span>
+                </div>
+            </div>
+
+            <!-- Risk Level -->
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-gray-400 text-sm">Risk Level</span>
+                    <div class="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-2xl font-bold mb-1" x-text="status.risk_level || 'MODERATE'"></div>
+                <select @change="updateRiskLevel($event.target.value)" 
+                    class="mt-2 bg-white/10 border border-white/20 rounded-lg px-3 py-1 text-sm w-full">
+                    <option value="CONSERVATIVE" :selected="status.risk_level === 'CONSERVATIVE'">Conservative</option>
+                    <option value="MODERATE" :selected="status.risk_level === 'MODERATE'">Moderate</option>
+                    <option value="AGGRESSIVE" :selected="status.risk_level === 'AGGRESSIVE'">Aggressive</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Live AI Feed -->
+        <div class="card-gradient rounded-2xl p-6 border border-white/10 mb-8">
+            <h2 class="text-lg font-semibold mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                Live AI Thought Process
+            </h2>
+            <div class="overflow-y-auto max-h-64 space-y-3 pr-2 custom-scrollbar">
+                <template x-for="thought in thoughts" :key="thought.timestamp + thought.symbol">
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/5 hover:bg-white/10 transition-colors">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-sm" x-text="thought.symbol"></span>
+                                <span class="text-xs text-gray-400" x-text="new Date(thought.timestamp).toLocaleTimeString()"></span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="{
+                                        'bg-green-500/20 text-green-400': thought.action === 'BUY',
+                                        'bg-red-500/20 text-red-400': thought.action === 'SELL',
+                                        'bg-gray-500/20 text-gray-400': thought.action === 'HOLD'
+                                    }" x-text="thought.action"></span>
+                                <span class="text-xs text-gray-400">Conf: <span x-text="(thought.confidence * 100).toFixed(0) + '%'"></span></span>
+                            </div>
+                        </div>
+                        <p class="text-sm text-gray-300 mb-2" x-text="thought.reasoning"></p>
+                        <div x-show="thought.filtered_reason" class="text-xs text-yellow-400/80 flex items-center">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            <span x-text="'Filtered: ' + thought.filtered_reason"></span>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="thoughts.length === 0" class="text-center py-8 text-gray-500">
+                    Waiting for AI analysis...
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Open Positions -->
+            <div class="lg:col-span-2 card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-4 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/>
+                    </svg>
+                    Open Positions
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full" x-show="Object.keys(status.positions || {}).length > 0">
+                        <thead>
+                            <tr class="text-gray-400 text-sm border-b border-white/10">
+                                <th class="text-left py-3">Symbol</th>
+                                <th class="text-right py-3">Entry</th>
+                                <th class="text-right py-3">Current</th>
+                                <th class="text-right py-3">Quantity</th>
+                                <th class="text-right py-3">P&L</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="(pos, symbol) in status.positions || {}" :key="symbol">
+                                <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                    <td class="py-4 font-medium" x-text="symbol"></td>
+                                    <td class="py-4 text-right text-gray-300" x-text="'$' + pos.entry_price?.toFixed(2)"></td>
+                                    <td class="py-4 text-right text-gray-300" x-text="'$' + pos.current_price?.toFixed(2)"></td>
+                                    <td class="py-4 text-right text-gray-300" x-text="pos.quantity?.toFixed(6)"></td>
+                                    <td class="py-4 text-right font-medium" 
+                                        :class="pos.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        <span x-text="(pos.unrealized_pnl >= 0 ? '+' : '') + pos.unrealized_pnl?.toFixed(2)"></span>
+                                        <span class="text-xs ml-1" x-text="'(' + (pos.unrealized_pnl_percent >= 0 ? '+' : '') + pos.unrealized_pnl_percent?.toFixed(2) + '%)'"></span>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                    <div x-show="Object.keys(status.positions || {}).length === 0" class="text-center py-12 text-gray-400">
+                        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                        </svg>
+                        <p>No open positions</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-4 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    Quick Analysis
+                </h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-sm text-gray-400 mb-1 block">Symbol</label>
+                        <select x-model="analyzeSymbol" class="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2">
+                            <option value="BTCUSDT">BTC/USDT</option>
+                            <option value="ETHUSDT">ETH/USDT</option>
+                            <option value="BNBUSDT">BNB/USDT</option>
+                            <option value="SOLUSDT">SOL/USDT</option>
+                            <option value="XRPUSDT">XRP/USDT</option>
+                        </select>
+                    </div>
+                    <button @click="runAnalysis()" 
+                        class="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 py-3 rounded-lg font-medium transition-all"
+                        :disabled="analyzing">
+                        <span x-show="!analyzing">Run AI Analysis</span>
+                        <span x-show="analyzing">Analyzing...</span>
+                    </button>
+                </div>
+
+                <!-- Analysis Result -->
+                <div x-show="analysis" class="mt-6 p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="font-medium" x-text="analysis?.symbol"></span>
+                        <span class="px-2 py-1 rounded text-xs font-medium"
+                            :class="{
+                                'bg-green-500/20 text-green-400': analysis?.action === 'BUY',
+                                'bg-red-500/20 text-red-400': analysis?.action === 'SELL',
+                                'bg-gray-500/20 text-gray-400': analysis?.action === 'HOLD'
+                            }"
+                            x-text="analysis?.action">
+                        </span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Sentiment</span>
+                            <span x-text="analysis?.sentiment"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Confidence</span>
+                            <span x-text="((analysis?.confidence || 0) * 100).toFixed(1) + '%'"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Stop Loss</span>
+                            <span x-text="'$' + (analysis?.stop_loss?.toFixed(2) || '-')"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Take Profit</span>
+                            <span x-text="'$' + (analysis?.take_profit?.toFixed(2) || '-')"></span>
+                        </div>
+                    </div>
+                    <p class="mt-3 text-xs text-gray-400" x-text="analysis?.reasoning"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Trades -->
+        <div class="mt-6 card-gradient rounded-2xl p-6 border border-white/10">
+            <h2 class="text-lg font-semibold mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                </svg>
+                Recent Trades
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full" x-show="trades.length > 0">
+                    <thead>
+                        <tr class="text-gray-400 text-sm border-b border-white/10">
+                            <th class="text-left py-3">Time</th>
+                            <th class="text-left py-3">Symbol</th>
+                            <th class="text-center py-3">Side</th>
+                            <th class="text-right py-3">Entry</th>
+                            <th class="text-right py-3">Exit</th>
+                            <th class="text-right py-3">P&L</th>
+                            <th class="text-center py-3">Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="trade in trades" :key="trade.id">
+                            <tr class="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                <td class="py-3 text-sm text-gray-400" x-text="new Date(trade.entry_time).toLocaleString()"></td>
+                                <td class="py-3 font-medium" x-text="trade.symbol"></td>
+                                <td class="py-3 text-center">
+                                    <span class="px-2 py-1 rounded text-xs font-medium"
+                                        :class="trade.side === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
+                                        x-text="trade.side">
+                                    </span>
+                                </td>
+                                <td class="py-3 text-right" x-text="'$' + trade.entry_price?.toFixed(2)"></td>
+                                <td class="py-3 text-right" x-text="trade.exit_price ? '$' + trade.exit_price.toFixed(2) : '-'"></td>
+                                <td class="py-3 text-right font-medium"
+                                    :class="trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    <span x-text="trade.pnl != null ? (trade.pnl >= 0 ? '+' : '') + trade.pnl.toFixed(2) : '-'"></span>
+                                </td>
+                                <td class="py-3 text-center">
+                                    <div class="w-full bg-white/10 rounded-full h-2">
+                                        <div class="h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"
+                                            :style="'width: ' + (trade.ai_confidence * 100) + '%'"></div>
+                                    </div>
+                                    <span class="text-xs text-gray-400" x-text="(trade.ai_confidence * 100).toFixed(0) + '%'"></span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <div x-show="trades.length === 0" class="text-center py-12 text-gray-400">
+                    <p>No trades yet</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="glass border-t border-white/10 mt-8">
+        <div class="max-w-7xl mx-auto px-4 py-4 text-center text-sm text-gray-400">
+            <p>CoinBourg AI Trading Bot v1.0.0 | Powered by DeepSeek AI</p>
+        </div>
+    </footer>
+
+    <script>
+        function dashboard() {
+            return {
+                status: {},
+                trades: [],
+                thoughts: [],
+                analysis: null,
+                analyzeSymbol: 'BTCUSDT',
+                analyzing: false,
+                apiUrl: window.location.origin,
+
+                async init() {
+                    await this.fetchStatus();
+                    await this.fetchTrades();
+                    await this.fetchThoughts();
+                    // Poll for updates
+                    setInterval(() => this.fetchStatus(), 5000);
+                    setInterval(() => this.fetchTrades(), 10000);
+                    setInterval(() => this.fetchThoughts(), 5000);
+                },
+
+                async fetchStatus() {
+                    try {
+                        const response = await fetch(`${this.apiUrl}/status`);
+                        this.status = await response.json();
+                    } catch (error) {
+                        console.error('Failed to fetch status:', error);
+                    }
+                },
+
+                async fetchTrades() {
+                    try {
+                        const response = await fetch(`${this.apiUrl}/trades?limit=20`);
+                        this.trades = await response.json();
+                    } catch (error) {
+                        console.error('Failed to fetch trades:', error);
+                    }
+                },
+
+                async fetchThoughts() {
+                    try {
+                        const response = await fetch(`${this.apiUrl}/api/v1/ai/thoughts?limit=50`);
+                        this.thoughts = await response.json();
+                    } catch (error) {
+                        console.error('Failed to fetch thoughts:', error);
+                    }
+                },
+
+                async toggleBot() {
+                    const endpoint = this.status.is_running ? '/stop' : '/start';
+                    try {
+                        await fetch(`${this.apiUrl}${endpoint}`, { method: 'POST' });
+                        await this.fetchStatus();
+                    } catch (error) {
+                        console.error('Failed to toggle bot:', error);
+                    }
+                },
+
+                async updateRiskLevel(level) {
+                    try {
+                        await fetch(`${this.apiUrl}/risk-settings`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ risk_level: level })
+                        });
+                        await this.fetchStatus();
+                    } catch (error) {
+                        console.error('Failed to update risk level:', error);
+                    }
+                },
+
+                async runAnalysis() {
+                    this.analyzing = true;
+                    try {
+                        const response = await fetch(`${this.apiUrl}/analyze`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ symbol: this.analyzeSymbol })
+                        });
+                        this.analysis = await response.json();
+                    } catch (error) {
+                        console.error('Failed to run analysis:', error);
+                    } finally {
+                        this.analyzing = false;
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>
