@@ -1,0 +1,86 @@
+{
+  "timestamp": "2025-12-09T13:44:37.346758",
+  "tests": {
+    "Configuration Check": {
+      "passed": true,
+      "error": null,
+      "details": {
+        "binance_configured": true,
+        "deepseek_configured": true,
+        "trading_pairs": [
+          "BTCUSDT",
+          "ETHUSDT",
+          "BNBUSDT",
+          "SOLUSDT",
+          "XRPUSDT"
+        ]
+      }
+    },
+    "Binance Connection": {
+      "passed": false,
+      "error": "'BinanceClient' object has no attribute '_test_connectivity'"
+    },
+    "Binance Market Data": {
+      "passed": true,
+      "details": {
+        "symbol": "BTCUSDT",
+        "price": 90252.63,
+        "change_24h": -1.496,
+        "klines_count": 100,
+        "data_age_seconds": -920.696558
+      }
+    },
+    "Binance Order Book": {
+      "passed": true,
+      "details": {
+        "bid_depth": 10,
+        "ask_depth": 10,
+        "top_bid": 90250.12,
+        "top_ask": 90250.13
+      }
+    },
+    "DeepSeek Connection": {
+      "passed": {
+        "healthy": true,
+        "last_check": "2025-12-09T13:44:39.822482",
+        "consecutive_errors": 0,
+        "last_successful_call": "2025-12-09T13:44:41.239068",
+        "model_usage": {
+          "deepseek": 0,
+          "gpt4": 0,
+          "claude": 0,
+          "fallback": 0
+        }
+      },
+      "details": {
+        "model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com",
+        "healthy": {
+          "healthy": true,
+          "last_check": "2025-12-09T13:44:39.822482",
+          "consecutive_errors": 0,
+          "last_successful_call": "2025-12-09T13:44:41.239068",
+          "model_usage": {
+            "deepseek": 0,
+            "gpt4": 0,
+            "claude": 0,
+            "fallback": 0
+          }
+        }
+      }
+    },
+    "DeepSeek AI Analysis": {
+      "passed": false,
+      "error": "cannot import name 'calculate_technical_indicators' from 'src.utils.helpers' (/home/siaziz/Desktop/CoinBourg/src/utils/helpers.py)"
+    },
+    "Complete Data Flow": {
+      "passed": false,
+      "error": "cannot import name 'calculate_technical_indicators' from 'src.utils.helpers' (/home/siaziz/Desktop/CoinBourg/src/utils/helpers.py)"
+    },
+    "Trading Engine": {
+      "passed": false,
+      "error": "'TradingEngine' object has no attribute 'get_ai_thoughts'"
+    }
+  },
+  "overall_status": "FAIL"
+}
