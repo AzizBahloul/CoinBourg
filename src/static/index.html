@@ -47,6 +47,20 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Alerts & Safety Banner -->
+        <div class="card-gradient rounded-2xl p-4 border border-white/10 mb-6 flex flex-wrap items-center gap-4">
+            <div class="flex items-center space-x-2">
+                <span class="px-3 py-1 rounded-full text-xs font-semibold" :class="safety.master_kill ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'" x-text="safety.master_kill ? 'Kill Switch: ON' : 'Kill Switch: OFF'"></span>
+                <span class="px-3 py-1 rounded-full text-xs font-semibold" :class="safety.paper_trading ? 'bg-blue-500/20 text-blue-300' : 'bg-yellow-500/20 text-yellow-200'" x-text="safety.paper_trading ? 'Paper Trading' : 'Live Mode'"></span>
+                <span class="px-3 py-1 rounded-full text-xs font-semibold" :class="safety.testnet ? 'bg-purple-500/20 text-purple-300' : 'bg-gray-500/20 text-gray-200'" x-text="safety.testnet ? 'Testnet' : 'Mainnet'"></span>
+            </div>
+            <div class="ml-auto flex space-x-2">
+                <button class="px-3 py-2 text-sm rounded-lg bg-red-500/20 hover:bg-red-500/30" @click="toggleKill()">Toggle Kill</button>
+                <button class="px-3 py-2 text-sm rounded-lg bg-blue-500/20 hover:bg-blue-500/30" @click="togglePaper()">Toggle Paper</button>
+                <button class="px-3 py-2 text-sm rounded-lg bg-purple-500/20 hover:bg-purple-500/30" @click="toggleTestnet()">Toggle Testnet</button>
+            </div>
+        </div>
+
         <!-- Stats Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <!-- Portfolio Value -->
@@ -115,6 +129,235 @@
                     <option value="MODERATE" :selected="status.risk_level === 'MODERATE'">Moderate</option>
                     <option value="AGGRESSIVE" :selected="status.risk_level === 'AGGRESSIVE'">Aggressive</option>
                 </select>
+            </div>
+        </div>
+
+        <!-- Data Freshness & Connectivity -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-semibold flex items-center space-x-2">
+                        <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse-slow"></span>
+                        <span>Data Freshness</span>
+                    </h2>
+                    <span class="text-xs text-gray-400">Last update times</span>
+                </div>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <template x-for="item in freshness" :key="item.name">
+                        <div class="bg-white/5 rounded-lg p-3 border border-white/5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-gray-300" x-text="item.name"></span>
+                                <span class="px-2 py-0.5 rounded text-xs" :class="item.stale ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'" x-text="item.stale ? 'Stale' : 'Fresh'"></span>
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1" x-text="item.last"></div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-4 flex items-center space-x-2">
+                    <span class="w-2 h-2 bg-sky-400 rounded-full"></span>
+                    <span>Circuit Breaker & Connectivity</span>
+                </h2>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/5">
+                        <div class="text-xs text-gray-400">Circuit State</div>
+                        <div class="text-xl font-bold" x-text="circuit.state"></div>
+                        <div class="text-xs text-gray-400">Failures: <span x-text="circuit.failures"></span> | Retries: <span x-text="circuit.retries"></span></div>
+                        <div class="text-xs text-gray-500 truncate" x-text="circuit.last_error"></div>
+                    </div>
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/5">
+                        <div class="text-xs text-gray-400 mb-2">Connectivity</div>
+                        <div class="flex flex-wrap gap-2 text-xs">
+                            <template x-for="svc in connectivity" :key="svc.name">
+                                <span class="px-2 py-1 rounded-full" :class="svc.up ? 'bg-green-500/20 text-green-200' : 'bg-red-500/20 text-red-200'" x-text="svc.name"></span>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-xs text-gray-400">Last checked: <span x-text="circuit.last_checked"></span></div>
+            </div>
+        </div>
+
+        <!-- AI Orchestrator & Sentiment -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="lg:col-span-2 card-gradient rounded-2xl p-6 border border-white/10">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold">AI Orchestrator Insights</h2>
+                    <span class="text-xs text-gray-400">Mode: <span x-text="orchestrator.mode"></span></span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <template x-for="provider in orchestrator.providers" :key="provider.name">
+                        <div class="bg-white/5 rounded-lg p-4 border border-white/5">
+                            <div class="flex items-center justify-between">
+                                <span class="font-semibold" x-text="provider.name"></span>
+                                <span class="px-2 py-0.5 rounded text-xs" :class="provider.healthy ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'" x-text="provider.healthy ? 'Healthy' : 'Unhealthy'"></span>
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1">Latency: <span x-text="provider.latency + ' ms'"></span></div>
+                            <div class="text-xs text-gray-400">Success: <span x-text="(provider.success_rate*100).toFixed(0) + '%' "></span></div>
+                        </div>
+                    </template>
+                </div>
+                <div class="mt-4 text-sm text-gray-300">Last provider used: <span class="font-semibold" x-text="orchestrator.last_provider"></span></div>
+            </div>
+
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-3">Sentiment Snapshot</h2>
+                <div class="flex items-center justify-between mb-2">
+                    <div class="text-3xl font-bold" x-text="sentiment.overall"></div>
+                    <div class="text-sm text-gray-400">Score: <span x-text="sentiment.score.toFixed(2)"></span></div>
+                </div>
+                <div class="space-y-2 text-sm">
+                    <template x-for="src in sentiment.sources" :key="src.name">
+                        <div class="flex items-center justify-between">
+                            <span class="text-gray-300" x-text="src.name"></span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-24 bg-white/10 h-2 rounded-full overflow-hidden">
+                                    <div class="h-2 bg-blue-400" :style="'width:' + (src.weight*100) + '%'"></div>
+                                </div>
+                                <span class="text-xs text-gray-400" x-text="src.weight.toFixed(2)"></span>
+                            </div>
+                        </div>
+                    </template>
+                    <div class="text-xs text-gray-400">Keywords: <span x-text="sentiment.keywords.join(', ')"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Risk & Performance -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-3">Risk Posture</h2>
+                <div class="text-sm text-gray-300 space-y-2">
+                    <div class="flex justify-between"><span>Preset</span><span x-text="risk.preset"></span></div>
+                    <div class="flex justify-between"><span>Max Position %</span><span x-text="risk.max_pos + '%'"></span></div>
+                    <div class="flex justify-between"><span>Stop Loss</span><span x-text="risk.stop_loss + '%'"></span></div>
+                    <div class="flex justify-between"><span>Take Profit</span><span x-text="risk.take_profit + '%'"></span></div>
+                    <div class="flex justify-between"><span>Utilization</span><span x-text="risk.utilization + '%'"></span></div>
+                </div>
+            </div>
+            <div class="lg:col-span-2 card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-3">Performance KPIs</h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/5"><div class="text-gray-400 text-xs">Equity</div><div class="text-xl font-bold" x-text="'$' + kpis.equity"></div></div>
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/5"><div class="text-gray-400 text-xs">Sharpe</div><div class="text-xl font-bold" x-text="kpis.sharpe"></div></div>
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/5"><div class="text-gray-400 text-xs">Sortino</div><div class="text-xl font-bold" x-text="kpis.sortino"></div></div>
+                    <div class="bg-white/5 rounded-lg p-3 border border-white/5"><div class="text-gray-400 text-xs">Drawdown</div><div class="text-xl font-bold" x-text="kpis.drawdown + '%' "></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Positions Heatmap & Orderbook -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="lg:col-span-2 card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-4">Positions Heatmap</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-gray-400 text-sm border-b border-white/10">
+                                <th class="text-left py-3">Symbol</th>
+                                <th class="text-right py-3">PnL%</th>
+                                <th class="text-right py-3">Stop</th>
+                                <th class="text-right py-3">TP</th>
+                                <th class="text-right py-3">Trailing</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="pos in heatmap" :key="pos.symbol">
+                                <tr class="border-b border-white/5" :class="pos.pnl >= 0 ? 'bg-green-500/5' : 'bg-red-500/5'">
+                                    <td class="py-3 font-medium" x-text="pos.symbol"></td>
+                                    <td class="py-3 text-right" x-text="pos.pnl.toFixed(2) + '%' "></td>
+                                    <td class="py-3 text-right" x-text="pos.stop"></td>
+                                    <td class="py-3 text-right" x-text="pos.tp"></td>
+                                    <td class="py-3 text-right" x-text="pos.trailing ? 'On' : 'Off'"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-3">Orderbook & Depth</h2>
+                <div class="text-sm text-gray-300 space-y-2">
+                    <div class="flex justify-between"><span>Spread %</span><span x-text="orderbook.spread"></span></div>
+                    <div class="flex justify-between"><span>Buy Wall</span><span x-text="orderbook.buy"></span></div>
+                    <div class="flex justify-between"><span>Sell Wall</span><span x-text="orderbook.sell"></span></div>
+                    <div class="flex justify-between"><span>Slippage Est.</span><span x-text="orderbook.slippage"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategy Signals & Trade Timeline -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-3">Strategy Signals</h2>
+                <div class="space-y-3 text-sm">
+                    <template x-for="sig in strategies" :key="sig.name">
+                        <div class="bg-white/5 rounded-lg p-3 border border-white/5 flex items-center justify-between">
+                            <div>
+                                <div class="font-semibold" x-text="sig.name"></div>
+                                <div class="text-xs text-gray-400" x-text="sig.reason"></div>
+                            </div>
+                            <div class="text-right">
+                                <div class="px-2 py-0.5 rounded text-xs font-semibold" :class="sig.action === 'BUY' ? 'bg-green-500/20 text-green-300' : sig.action === 'SELL' ? 'bg-red-500/20 text-red-300' : 'bg-gray-500/20 text-gray-200'" x-text="sig.action"></div>
+                                <div class="text-xs text-gray-400" x-text="(sig.confidence*100).toFixed(0) + '%' "></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-3">Trade Timeline</h2>
+                <div class="space-y-3 max-h-80 overflow-y-auto">
+                    <template x-for="item in timeline" :key="item.id">
+                        <div class="bg-white/5 rounded-lg p-3 border border-white/5">
+                            <div class="flex items-center justify-between text-sm">
+                                <div class="font-semibold" x-text="item.symbol"></div>
+                                <div class="text-xs text-gray-400" x-text="item.path"></div>
+                            </div>
+                            <div class="flex items-center space-x-2 text-xs text-gray-400">
+                                <span x-text="item.side"></span>
+                                <span>•</span>
+                                <span x-text="'Conf ' + (item.confidence*100).toFixed(0) + '%' "></span>
+                            </div>
+                            <div class="text-xs text-gray-300 mt-1" x-text="item.reason"></div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backtesting / Simulation Launcher & Logs -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-3">Backtesting / Simulation</h2>
+                <div class="space-y-3 text-sm">
+                    <select class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2" x-model="tester.type">
+                        <option value="backtest">Backtest</option>
+                        <option value="paper">Paper</option>
+                        <option value="forward">Forward</option>
+                    </select>
+                    <input class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2" x-model="tester.symbols" placeholder="Symbols (comma-separated)">
+                    <button class="w-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg py-2" @click="runTest()">Run</button>
+                    <div class="text-xs text-gray-400">Preset: <span x-text="tester.preset"></span></div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 card-gradient rounded-2xl p-6 border border-white/10">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-semibold">Logs & Errors</h2>
+                    <button class="text-xs px-3 py-1 rounded bg-white/10" @click="logsOpen = !logsOpen" x-text="logsOpen ? 'Hide' : 'Show'"></button>
+                </div>
+                <div x-show="logsOpen" class="max-h-60 overflow-y-auto space-y-2 text-xs">
+                    <template x-for="log in logs" :key="log.id">
+                        <div class="bg-white/5 rounded p-2 border border-white/5 flex justify-between">
+                            <span class="text-gray-300" x-text="log.msg"></span>
+                            <span class="px-2 py-0.5 rounded" :class="log.level === 'error' ? 'bg-red-500/20 text-red-200' : log.level === 'warn' ? 'bg-yellow-500/20 text-yellow-200' : 'bg-green-500/20 text-green-200'" x-text="log.level"></span>
+                        </div>
+                    </template>
+                </div>
             </div>
         </div>
 
@@ -341,6 +584,63 @@
                 analyzeSymbol: 'BTCUSDT',
                 analyzing: false,
                 apiUrl: window.location.origin,
+                safety: { master_kill: true, paper_trading: true, testnet: true },
+                freshness: [
+                    { name: 'Scanner', last: 'Just now', stale: false },
+                    { name: 'Sentiment', last: '15s ago', stale: false },
+                    { name: 'AI', last: '1m ago', stale: false },
+                    { name: 'Orderbook', last: '25s ago', stale: false },
+                ],
+                circuit: { state: 'CLOSED', failures: 0, retries: 0, last_error: '', last_checked: '' },
+                connectivity: [
+                    { name: 'Binance', up: true },
+                    { name: 'DeepSeek', up: true },
+                    { name: 'Redis', up: true },
+                    { name: 'Postgres', up: false },
+                ],
+                orchestrator: {
+                    mode: 'fallback',
+                    last_provider: 'deepseek',
+                    providers: [
+                        { name: 'DeepSeek', healthy: true, latency: 120, success_rate: 0.9 },
+                        { name: 'OpenAI', healthy: true, latency: 180, success_rate: 0.8 },
+                        { name: 'Rule-based', healthy: true, latency: 10, success_rate: 0.7 },
+                    ]
+                },
+                sentiment: {
+                    overall: 'BULLISH',
+                    score: 0.62,
+                    keywords: ['breakout', 'momentum', 'whale buy'],
+                    sources: [
+                        { name: 'Twitter', weight: 0.35 },
+                        { name: 'Reddit', weight: 0.2 },
+                        { name: 'News', weight: 0.25 },
+                        { name: 'Fear & Greed', weight: 0.2 },
+                    ]
+                },
+                risk: { preset: 'MODERATE', max_pos: 5, stop_loss: 2.5, take_profit: 4.0, utilization: 12 },
+                kpis: { equity: '10,500', sharpe: 1.2, sortino: 1.5, drawdown: 3.4 },
+                heatmap: [
+                    { symbol: 'BTCUSDT', pnl: 2.5, stop: '48,000', tp: '53,000', trailing: true },
+                    { symbol: 'ETHUSDT', pnl: -1.2, stop: '2,300', tp: '2,650', trailing: false },
+                ],
+                orderbook: { spread: '0.08%', buy: 'High', sell: 'Medium', slippage: '0.03%' },
+                strategies: [
+                    { name: 'Momentum', action: 'BUY', confidence: 0.74, reason: 'RSI trending up' },
+                    { name: 'Mean Reversion', action: 'HOLD', confidence: 0.55, reason: 'Price near fair value' },
+                    { name: 'Breakout', action: 'BUY', confidence: 0.68, reason: 'Above resistance' },
+                ],
+                timeline: [
+                    { id: 1, symbol: 'BTCUSDT', side: 'BUY', confidence: 0.78, reason: 'AI consensus', path: 'paper/testnet' },
+                    { id: 2, symbol: 'ETHUSDT', side: 'SELL', confidence: 0.61, reason: 'Momentum down', path: 'paper/testnet' },
+                ],
+                tester: { type: 'backtest', symbols: 'BTCUSDT,ETHUSDT', preset: '30D' },
+                logsOpen: false,
+                logs: [
+                    { id: 1, level: 'info', msg: 'Scanner refreshed' },
+                    { id: 2, level: 'warn', msg: 'Binance latency high' },
+                    { id: 3, level: 'error', msg: 'Redis reconnecting' },
+                ],
 
                 async init() {
                     await this.fetchStatus();
@@ -377,6 +677,16 @@
                     } catch (error) {
                         console.error('Failed to fetch thoughts:', error);
                     }
+                },
+
+                async toggleKill() {
+                    this.safety.master_kill = !this.safety.master_kill;
+                },
+                async togglePaper() {
+                    this.safety.paper_trading = !this.safety.paper_trading;
+                },
+                async toggleTestnet() {
+                    this.safety.testnet = !this.safety.testnet;
                 },
 
                 async toggleBot() {
@@ -416,6 +726,11 @@
                     } finally {
                         this.analyzing = false;
                     }
+                },
+
+                async runTest() {
+                    // Placeholder action
+                    console.log('Run test', this.tester);
                 }
             };
         }

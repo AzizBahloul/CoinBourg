@@ -29,6 +29,12 @@ class OrderType(str, Enum):
     TAKE_PROFIT_LIMIT = "TAKE_PROFIT_LIMIT"
 
 
+class OrderSide(str, Enum):
+    """Order side (buy or sell)."""
+    BUY = "BUY"
+    SELL = "SELL"
+
+
 class OrderStatus(str, Enum):
     """Order statuses."""
     NEW = "NEW"

@@ -14,9 +14,9 @@ from typing import Dict, List, Optional
 from contextlib import asynccontextmanager
 from collections import defaultdict
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request, status
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request, status, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field, validator
@@ -24,11 +24,19 @@ import os
 
 from src.config.settings import get_settings, RISK_PRESETS
 from src.core.trading_engine import TradingEngine
+from src.utils.prometheus_monitor import get_monitor
+from src.utils.health_check import get_health_check_system
 
 logger = logging.getLogger(__name__)
 
 # Global trading engine instance
 trading_engine: Optional[TradingEngine] = None
+
+# Prometheus monitor instance
+monitor = get_monitor()
+
+# Health check system
+health_checker = get_health_check_system()
 
 # Rate limiting storage
 rate_limit_storage: Dict[str, List[float]] = defaultdict(list)
@@ -312,18 +320,56 @@ async def api_info():
     }
 
 
-@app.get("/health", response_model=HealthResponse, tags=["General"])
-async def health_check(engine: TradingEngine = Depends(get_engine)):
-    """Health check endpoint."""
-    binance_ok = await engine.binance.test_connectivity()
-    deepseek_ok = await engine.deepseek.test_connection()
+@app.get("/health")
+async def health_check():
+    """Basic health check endpoint."""
+    monitor.update_uptime()
     
-    return HealthResponse(
-        status="healthy" if binance_ok and deepseek_ok else "degraded",
-        timestamp=datetime.utcnow().isoformat(),
-        binance_connected=binance_ok,
-        deepseek_connected=deepseek_ok,
-        version=get_settings().APP_VERSION
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0",
+        "uptime_seconds": monitor.system_uptime._value.get()
+    }
+
+
+@app.get("/health/detailed")
+async def detailed_health_check(engine: TradingEngine = Depends(get_engine)):
+    """
+    Comprehensive health check with component status.
+    
+    Checks:
+    - Binance API connectivity
+    - DeepSeek AI availability
+    - Database connection
+    - Redis cache (if configured)
+    """
+    from src.config.settings import get_settings
+    settings = get_settings()
+    
+    # Check all components
+    health_status = await health_checker.check_all_components(
+        binance_client=engine.binance if engine else None,
+        deepseek_client=engine.deepseek if engine else None,
+        state_manager=engine.state_manager if engine else None,
+        redis_url=settings.REDIS_URL if hasattr(settings, 'REDIS_URL') else None
+    )
+    
+    overall_health = health_checker.get_overall_health()
+    
+    return overall_health
+
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Prometheus metrics endpoint.
+    
+    Returns metrics in Prometheus text format for scraping.
+    """
+    return Response(
+        content=monitor.generate_metrics(),
+        media_type="text/plain; version=0.0.4"
     )
 
 
@@ -805,3 +851,163 @@ async def global_exception_handler(request, exc):
         status_code=500,
         content={"detail": "Internal server error", "error": str(exc)}
     )
+
+
+# WebSocket endpoint for real-time updates
+@app.websocket("/ws/trading")
+async def websocket_trading_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time trading data streaming.
+    
+    Streams:
+    - Portfolio value updates
+    - Position changes
+    - Trade executions
+    - AI predictions
+    - System health
+    """
+    await websocket.accept()
+    logger.info(f"WebSocket client connected from {websocket.client}")
+    
+    try:
+        # Get trading engine
+        engine = await get_engine()
+        
+        if not engine:
+            await websocket.send_json({"error": "Trading engine not initialized"})
+            await websocket.close()
+            return
+        
+        # Send initial status
+        await websocket.send_json({
+            "type": "initial_status",
+            "data": engine.get_status()
+        })
+        
+        # Stream updates
+        while True:
+            try:
+                # Send portfolio update every 5 seconds
+                status = engine.get_status()
+                
+                await websocket.send_json({
+                    "type": "portfolio_update",
+                    "data": {
+                        "portfolio_value": status.get('portfolio_value'),
+                        "available_balance": status.get('available_balance'),
+                        "open_positions": status.get('open_positions'),
+                        "total_pnl": status.get('total_pnl'),
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                })
+                
+                # Send positions update
+                if engine.positions:
+                    await websocket.send_json({
+                        "type": "positions_update",
+                        "data": [
+                            {
+                                "symbol": pos.symbol,
+                                "quantity": pos.quantity,
+                                "entry_price": pos.entry_price,
+                                "current_price": pos.current_price,
+                                "unrealized_pnl": pos.unrealized_pnl,
+                                "unrealized_pnl_percent": pos.unrealized_pnl_percent
+                            }
+                            for pos in engine.positions.values()
+                        ]
+                    })
+                
+                # Send recent trade if any
+                if engine.trades and len(engine.trades) > 0:
+                    latest_trade = engine.trades[-1]
+                    await websocket.send_json({
+                        "type": "latest_trade",
+                        "data": {
+                            "symbol": latest_trade.symbol,
+                            "side": latest_trade.side,
+                            "entry_price": latest_trade.entry_price,
+                            "quantity": latest_trade.quantity,
+                            "pnl": latest_trade.pnl if hasattr(latest_trade, 'pnl') else None,
+                            "timestamp": latest_trade.entry_time.isoformat()
+                        }
+                    })
+                
+                await asyncio.sleep(5)
+            
+            except WebSocketDisconnect:
+                logger.info("WebSocket client disconnected")
+                break
+            
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
+                await websocket.send_json({"error": str(e)})
+                await asyncio.sleep(5)
+    
+    except WebSocketDisconnect:
+        logger.info("WebSocket client disconnected")
+    
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {e}")
+    
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
+
+
+@app.websocket("/ws/prices/{symbol}")
+async def websocket_price_stream(websocket: WebSocket, symbol: str):
+    """
+    WebSocket endpoint for real-time price streaming of a specific symbol.
+    
+    Args:
+        symbol: Trading pair symbol (e.g., BTCUSDT)
+    """
+    await websocket.accept()
+    logger.info(f"Price stream WebSocket connected for {symbol}")
+    
+    try:
+        engine = await get_engine()
+        
+        if not engine or not engine.websocket_client:
+            await websocket.send_json({"error": "WebSocket client not available"})
+            await websocket.close()
+            return
+        
+        # Stream price updates
+        while True:
+            try:
+                # Get current price
+                price = await engine.binance.get_ticker_price(symbol)
+                ticker_data = await engine.binance.get_ticker_24h(symbol)
+                
+                await websocket.send_json({
+                    "symbol": symbol,
+                    "price": price,
+                    "price_change_24h": float(ticker_data.get('priceChangePercent', 0)),
+                    "volume_24h": float(ticker_data.get('volume', 0)),
+                    "high_24h": float(ticker_data.get('highPrice', 0)),
+                    "low_24h": float(ticker_data.get('lowPrice', 0)),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                
+                await asyncio.sleep(1)  # Update every second
+            
+            except WebSocketDisconnect:
+                break
+            
+            except Exception as e:
+                logger.error(f"Price stream error for {symbol}: {e}")
+                await asyncio.sleep(5)
+    
+    except WebSocketDisconnect:
+        logger.info(f"Price stream disconnected for {symbol}")
+    
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
+

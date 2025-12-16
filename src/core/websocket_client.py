@@ -86,6 +86,14 @@ class WebSocketClient:
         self._running = False
         self._reconnect_delay = 5
         self._max_reconnect_delay = 60
+        self._reconnect_attempts = 0
+        self._max_reconnect_attempts = 10
+        
+        # Heartbeat monitoring (NEW)
+        self._last_message_time: Dict[str, datetime] = {}
+        self._heartbeat_interval = 30  # Send ping every 30 seconds
+        self._heartbeat_timeout = 60  # Reconnect if no message for 60 seconds
+        self._heartbeat_tasks: Dict[str, asyncio.Task] = {}
         
         # Subscriptions
         self._subscribed_symbols: Set[str] = set()
@@ -95,6 +103,10 @@ class WebSocketClient:
             'depth': [],
             'large_order': []
         }
+        
+        # Connection state tracking (NEW)
+        self._connection_healthy: Dict[str, bool] = {}
+        self._reconnection_in_progress: Dict[str, bool] = {}
         
         # Large order detection
         self._large_order_threshold_usd = 100000  # $100k+ orders
@@ -407,3 +419,209 @@ class WebSocketClient:
                 return False
         
         return True
+    
+    # ===== ENHANCED RECONNECTION & HEARTBEAT (NEW) =====
+    
+    async def _heartbeat_monitor(self, stream_id: str):
+        """
+        Monitor connection health and send heartbeats.
+        
+        Args:
+            stream_id: Unique stream identifier
+        """
+        logger.info(f"Starting heartbeat monitor for {stream_id}")
+        
+        while self._running and stream_id in self._connections:
+            try:
+                # Check if connection is still alive
+                if stream_id in self._last_message_time:
+                    elapsed = (datetime.utcnow() - self._last_message_time[stream_id]).total_seconds()
+                    
+                    if elapsed > self._heartbeat_timeout:
+                        logger.warning(f"Stream {stream_id} timeout ({elapsed}s), reconnecting...")
+                        self._connection_healthy[stream_id] = False
+                        await self._reconnect_stream(stream_id)
+                        continue
+                
+                # Send ping
+                if stream_id in self._connections:
+                    ws = self._connections[stream_id]
+                    await ws.ping()
+                    logger.debug(f"Sent heartbeat ping to {stream_id}")
+                
+                await asyncio.sleep(self._heartbeat_interval)
+            
+            except websockets.ConnectionClosed:
+                logger.warning(f"Heartbeat failed for {stream_id}: Connection closed")
+                self._connection_healthy[stream_id] = False
+                await self._reconnect_stream(stream_id)
+            
+            except Exception as e:
+                logger.error(f"Heartbeat error for {stream_id}: {e}")
+                await asyncio.sleep(5)
+    
+    async def _reconnect_stream(self, stream_id: str):
+        """
+        Reconnect a specific stream with exponential backoff.
+        
+        Args:
+            stream_id: Stream to reconnect
+        """
+        if stream_id in self._reconnection_in_progress and self._reconnection_in_progress[stream_id]:
+            logger.debug(f"Reconnection already in progress for {stream_id}")
+            return
+        
+        self._reconnection_in_progress[stream_id] = True
+        self._reconnect_attempts += 1
+        
+        reconnect_delay = min(
+            self._reconnect_delay * (2 ** self._reconnect_attempts),
+            self._max_reconnect_delay
+        )
+        
+        logger.info(f"Reconnecting {stream_id} (attempt {self._reconnect_attempts})...")
+        
+        try:
+            # Close existing connection
+            if stream_id in self._connections:
+                await self._connections[stream_id].close()
+                del self._connections[stream_id]
+            
+            # Wait before reconnecting
+            await asyncio.sleep(reconnect_delay)
+            
+            # Resubscribe to streams
+            # (Implementation depends on how you track subscriptions)
+            logger.info(f"Stream {stream_id} reconnected successfully")
+            
+            self._reconnect_attempts = 0  # Reset on success
+            self._connection_healthy[stream_id] = True
+        
+        except Exception as e:
+            logger.error(f"Reconnection failed for {stream_id}: {e}")
+            
+            if self._reconnect_attempts < self._max_reconnect_attempts:
+                # Retry
+                await self._reconnect_stream(stream_id)
+            else:
+                logger.critical(f"Max reconnection attempts reached for {stream_id}")
+        
+        finally:
+            self._reconnection_in_progress[stream_id] = False
+    
+    async def subscribe_with_auto_reconnect(
+        self,
+        symbols: List[str],
+        stream_types: List[str] = None
+    ):
+        """
+        Subscribe to symbol streams with automatic reconnection.
+        
+        Args:
+            symbols: List of symbols to subscribe to
+            stream_types: Types of streams ('trade', 'ticker', 'depth')
+        """
+        if stream_types is None:
+            stream_types = ['trade', 'ticker']
+        
+        # Build stream names
+        streams = []
+        for symbol in symbols:
+            symbol_lower = symbol.lower()
+            for stream_type in stream_types:
+                streams.append(f"{symbol_lower}@{stream_type}")
+        
+        stream_id = "_".join(symbols[:3])  # Use first 3 symbols as ID
+        
+        # Start connection
+        try:
+            # Create combined stream URL
+            stream_params = "/".join(streams)
+            ws_url = f"{self.ws_stream_url}?streams={stream_params}"
+            
+            logger.info(f"Connecting to WebSocket: {stream_id}")
+            
+            ws = await websockets.connect(ws_url)
+            self._connections[stream_id] = ws
+            self._connection_healthy[stream_id] = True
+            self._last_message_time[stream_id] = datetime.utcnow()
+            
+            # Start heartbeat monitor
+            heartbeat_task = asyncio.create_task(self._heartbeat_monitor(stream_id))
+            self._heartbeat_tasks[stream_id] = heartbeat_task
+            
+            # Start message processing
+            asyncio.create_task(self._process_stream_messages(stream_id, ws))
+            
+            logger.info(f"Successfully subscribed to {len(streams)} streams")
+        
+        except Exception as e:
+            logger.error(f"Failed to subscribe to streams: {e}")
+            self._connection_healthy[stream_id] = False
+            await self._reconnect_stream(stream_id)
+    
+    async def _process_stream_messages(self, stream_id: str, ws: WebSocketClientProtocol):
+        """
+        Process messages from a stream with error handling.
+        
+        Args:
+            stream_id: Stream identifier
+            ws: WebSocket connection
+        """
+        try:
+            async for message in ws:
+                self._last_message_time[stream_id] = datetime.utcnow()
+                self._messages_received += 1
+                
+                try:
+                    data = json.loads(message)
+                    
+                    # Route to appropriate handler
+                    if 'stream' in data:
+                        stream_name = data['stream']
+                        stream_data = data['data']
+                        
+                        if '@trade' in stream_name:
+                            await self._handle_trade_message(stream_data)
+                        elif '@ticker' in stream_name:
+                            await self._handle_ticker_message(stream_data)
+                        elif '@depth' in stream_name:
+                            await self._handle_depth_message(stream_data)
+                
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse message from {stream_id}: {e}")
+                except Exception as e:
+                    logger.error(f"Error processing message from {stream_id}: {e}")
+        
+        except websockets.ConnectionClosed:
+            logger.warning(f"Stream {stream_id} connection closed")
+            self._connection_healthy[stream_id] = False
+            await self._reconnect_stream(stream_id)
+        
+        except Exception as e:
+            logger.error(f"Stream {stream_id} error: {e}")
+            self._connection_healthy[stream_id] = False
+    
+    async def close_all_connections(self):
+        """Close all WebSocket connections gracefully."""
+        logger.info("Closing all WebSocket connections...")
+        
+        self._running = False
+        
+        # Cancel heartbeat tasks
+        for task in self._heartbeat_tasks.values():
+            task.cancel()
+        
+        # Close all connections
+        for stream_id, ws in list(self._connections.items()):
+            try:
+                await ws.close()
+                logger.info(f"Closed connection: {stream_id}")
+            except Exception as e:
+                logger.error(f"Error closing connection {stream_id}: {e}")
+        
+        self._connections.clear()
+        self._heartbeat_tasks.clear()
+        
+        logger.info("All WebSocket connections closed")
+

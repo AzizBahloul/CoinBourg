@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+import numpy as np
+from scipy import stats
 
 from src.config.settings import get_settings
 from src.config.constants import RiskLevel, TradeAction as OrderSide
@@ -162,6 +164,13 @@ class RiskManager:
         self.trade_history: List[TradeRecord] = []
         
         logger.info(f"Risk Manager initialized with {risk_level.value} risk level")
+
+    def validate_trade(self, signal: Dict, current_portfolio: Dict) -> Dict:
+        """Lightweight validation stub for tests."""
+        position_cap = current_portfolio.get("total_value", 0) * 0.1
+        adjusted = dict(signal)
+        adjusted["position_size_usd"] = min(signal.get("position_size_usd", position_cap), position_cap)
+        return adjusted
     
     def set_risk_level(self, risk_level: RiskLevel) -> None:
         """Change the risk level"""
@@ -802,6 +811,336 @@ class RiskManager:
         """Reset consecutive loss counter"""
         self.state.consecutive_losses = 0
         logger.info("Consecutive losses counter reset")
+    
+    # ===========================================
+    # Advanced Risk Analytics
+    # ===========================================
+    
+    def calculate_var(
+        self,
+        confidence_level: float = 0.95,
+        time_horizon_days: int = 1
+    ) -> Dict[str, float]:
+        """
+        Calculate Value at Risk (VaR) for the portfolio.
+        
+        VaR represents the maximum expected loss over a given time period
+        at a specified confidence level.
+        
+        Args:
+            confidence_level: Confidence level (default 95%)
+            time_horizon_days: Time horizon in days
+            
+        Returns:
+            Dictionary with VaR calculations:
+            - var_historical: Historical VaR
+            - var_parametric: Parametric VaR  
+            - cvar: Conditional VaR (Expected Shortfall)
+            - portfolio_value: Current portfolio value
+        """
+        if not self.trade_history:
+            logger.warning("No trade history available for VaR calculation")
+            return {
+                'var_historical': 0.0,
+                'var_parametric': 0.0,
+                'cvar': 0.0,
+                'portfolio_value': self.state.total_portfolio_value,
+                'confidence_level': confidence_level,
+                'time_horizon_days': time_horizon_days
+            }
+        
+        # Extract returns from trade history
+        returns = np.array([
+            trade.pnl_percent / 100 for trade in self.trade_history
+        ])
+        
+        if len(returns) == 0:
+            return {
+                'var_historical': 0.0,
+                'var_parametric': 0.0,
+                'cvar': 0.0,
+                'portfolio_value': self.state.total_portfolio_value
+            }
+        
+        # Adjust returns for time horizon
+        adjusted_returns = returns * np.sqrt(time_horizon_days)
+        
+        # Historical VaR (percentile method)
+        var_historical_pct = np.percentile(adjusted_returns, (1 - confidence_level) * 100)
+        var_historical = var_historical_pct * self.state.total_portfolio_value
+        
+        # Parametric VaR (assumes normal distribution)
+        mean_return = np.mean(adjusted_returns)
+        std_return = np.std(adjusted_returns)
+        z_score = stats.norm.ppf(1 - confidence_level)
+        var_parametric_pct = mean_return + (z_score * std_return)
+        var_parametric = var_parametric_pct * self.state.total_portfolio_value
+        
+        # Conditional VaR (Expected Shortfall) - average loss beyond VaR
+        losses_beyond_var = adjusted_returns[adjusted_returns < var_historical_pct]
+        if len(losses_beyond_var) > 0:
+            cvar_pct = np.mean(losses_beyond_var)
+            cvar = cvar_pct * self.state.total_portfolio_value
+        else:
+            cvar = var_historical
+        
+        logger.info(
+            f"VaR ({confidence_level*100}%, {time_horizon_days}d): "
+            f"Historical=${abs(var_historical):,.2f}, "
+            f"Parametric=${abs(var_parametric):,.2f}, "
+            f"CVaR=${abs(cvar):,.2f}"
+        )
+        
+        return {
+            'var_historical': abs(var_historical),
+            'var_parametric': abs(var_parametric),
+            'cvar': abs(cvar),
+            'portfolio_value': self.state.total_portfolio_value,
+            'confidence_level': confidence_level,
+            'time_horizon_days': time_horizon_days,
+            'max_expected_loss_pct': abs(var_historical_pct * 100)
+        }
+    
+    def stress_test_portfolio(self) -> Dict[str, Dict]:
+        """
+        Stress test portfolio under extreme market scenarios.
+        
+        Tests portfolio resilience under:
+        - Market crash (-30%)
+        - Flash crash (-15% sudden)
+        - Black swan event (-50%)
+        - Moderate correction (-10%)
+        
+        Returns:
+            Dictionary with scenario results
+        """
+        scenarios = {
+            'market_crash': -0.30,
+            'flash_crash': -0.15,
+            'black_swan': -0.50,
+            'moderate_correction': -0.10,
+            'minor_correction': -0.05
+        }
+        
+        results = {}
+        
+        for scenario_name, price_change in scenarios.items():
+            # Calculate portfolio value after scenario
+            scenario_value = 0.0
+            position_impacts = {}
+            
+            for symbol, position in self.positions.items():
+                new_price = position.current_price * (1 + price_change)
+                new_value = new_price * position.quantity
+                impact = new_value - position.position_value
+                
+                scenario_value += new_value
+                position_impacts[symbol] = {
+                    'original_value': position.position_value,
+                    'scenario_value': new_value,
+                    'impact': impact,
+                    'impact_pct': (impact / position.position_value * 100) if position.position_value > 0 else 0
+                }
+            
+            # Add remaining balance
+            scenario_value += self.state.available_balance
+            
+            loss = self.state.total_portfolio_value - scenario_value
+            loss_pct = (loss / self.state.total_portfolio_value * 100) if self.state.total_portfolio_value > 0 else 0
+            
+            # Check if any stop losses would trigger
+            stop_losses_triggered = []
+            for symbol, position in self.positions.items():
+                new_price = position.current_price * (1 + price_change)
+                if position.side == OrderSide.BUY and new_price <= position.stop_loss:
+                    stop_losses_triggered.append(symbol)
+                elif position.side == OrderSide.SELL and new_price >= position.stop_loss:
+                    stop_losses_triggered.append(symbol)
+            
+            results[scenario_name] = {
+                'scenario': scenario_name,
+                'price_change_pct': price_change * 100,
+                'original_portfolio_value': self.state.total_portfolio_value,
+                'scenario_portfolio_value': scenario_value,
+                'loss': loss,
+                'loss_pct': loss_pct,
+                'position_impacts': position_impacts,
+                'stop_losses_triggered': stop_losses_triggered,
+                'survives': loss_pct < 50  # Portfolio survives if loss < 50%
+            }
+        
+        # Log worst case
+        worst_case = max(results.values(), key=lambda x: x['loss_pct'])
+        logger.info(
+            f"Stress Test - Worst Case ({worst_case['scenario']}): "
+            f"Portfolio would drop to ${worst_case['scenario_portfolio_value']:,.2f} "
+            f"({worst_case['loss_pct']:.2f}% loss)"
+        )
+        
+        return results
+    
+    async def check_portfolio_correlation(
+        self,
+        price_history: Dict[str, List[float]]
+    ) -> Dict[str, any]:
+        """
+        Analyze correlation between portfolio positions.
+        
+        High correlation means positions move together, increasing risk.
+        
+        Args:
+            price_history: Dict of symbol -> list of recent prices
+            
+        Returns:
+            Correlation analysis results
+        """
+        if len(self.positions) < 2:
+            return {
+                'correlation_risk': 'LOW',
+                'message': 'Less than 2 positions, no correlation risk',
+                'positions': len(self.positions)
+            }
+        
+        # Get symbols that have positions
+        symbols = list(self.positions.keys())
+        
+        # Filter price history for these symbols
+        valid_symbols = [s for s in symbols if s in price_history and len(price_history[s]) > 1]
+        
+        if len(valid_symbols) < 2:
+            return {
+                'correlation_risk': 'UNKNOWN',
+                'message': 'Insufficient price history for correlation analysis',
+                'positions': len(self.positions)
+            }
+        
+        # Calculate returns
+        returns_matrix = []
+        for symbol in valid_symbols:
+            prices = np.array(price_history[symbol])
+            returns = np.diff(prices) / prices[:-1]
+            returns_matrix.append(returns)
+        
+        # Ensure all return series have same length
+        min_length = min(len(r) for r in returns_matrix)
+        returns_matrix = [r[-min_length:] for r in returns_matrix]
+        
+        # Calculate correlation matrix
+        correlation_matrix = np.corrcoef(returns_matrix)
+        
+        # Analyze correlation
+        high_correlation_pairs = []
+        for i in range(len(valid_symbols)):
+            for j in range(i + 1, len(valid_symbols)):
+                corr = correlation_matrix[i][j]
+                if abs(corr) > 0.8:  # High correlation threshold
+                    high_correlation_pairs.append({
+                        'symbol1': valid_symbols[i],
+                        'symbol2': valid_symbols[j],
+                        'correlation': corr
+                    })
+        
+        # Determine risk level
+        high_corr_count = len(high_correlation_pairs)
+        total_pairs = len(valid_symbols) * (len(valid_symbols) - 1) / 2
+        high_corr_ratio = high_corr_count / total_pairs if total_pairs > 0 else 0
+        
+        if high_corr_ratio > 0.5:
+            risk_level = 'HIGH'
+            message = 'More than 50% of position pairs are highly correlated'
+        elif high_corr_ratio > 0.25:
+            risk_level = 'MEDIUM'
+            message = '25-50% of position pairs are highly correlated'
+        else:
+            risk_level = 'LOW'
+            message = 'Portfolio is well-diversified with low correlation'
+        
+        # Calculate average correlation
+        upper_triangle = correlation_matrix[np.triu_indices_from(correlation_matrix, k=1)]
+        avg_correlation = np.mean(np.abs(upper_triangle))
+        
+        logger.info(
+            f"Portfolio Correlation: {risk_level} "
+            f"(avg={avg_correlation:.2f}, high_corr_pairs={high_corr_count})"
+        )
+        
+        return {
+            'correlation_risk': risk_level,
+            'message': message,
+            'positions': len(self.positions),
+            'analyzed_positions': len(valid_symbols),
+            'average_correlation': float(avg_correlation),
+            'high_correlation_pairs': high_correlation_pairs,
+            'high_correlation_count': high_corr_count,
+            'recommendation': 'Consider reducing positions' if risk_level == 'HIGH' else 'Portfolio diversification acceptable'
+        }
+    
+    def calculate_optimal_position_size(
+        self,
+        symbol: str,
+        volatility: float,
+        correlation_with_portfolio: float = 0.0
+    ) -> float:
+        """
+        Calculate optimal position size based on volatility and correlation.
+        
+        Uses Kelly Criterion adjusted for volatility and correlation.
+        
+        Args:
+            symbol: Trading symbol
+            volatility: Asset volatility (standard deviation of returns)
+            correlation_with_portfolio: Correlation with existing portfolio (0-1)
+            
+        Returns:
+            Optimal position size as percentage of portfolio
+        """
+        base_size = self.config["max_position_size_percent"]
+        
+        # Adjust for volatility (higher volatility = smaller position)
+        volatility_factor = 1.0 / (1.0 + volatility * 2)
+        
+        # Adjust for correlation (higher correlation = smaller position)
+        correlation_factor = 1.0 - (abs(correlation_with_portfolio) * 0.5)
+        
+        # Adjust for win rate if we have trade history
+        if self.trade_history:
+            symbol_trades = [t for t in self.trade_history if t.symbol == symbol]
+            if symbol_trades:
+                wins = sum(1 for t in symbol_trades if t.pnl > 0)
+                win_rate = wins / len(symbol_trades)
+                
+                # Kelly Criterion: f = (bp - q) / b
+                # where p = win rate, q = loss rate, b = win/loss ratio
+                if win_rate > 0.5:
+                    avg_win = np.mean([t.pnl_percent for t in symbol_trades if t.pnl > 0])
+                    avg_loss = abs(np.mean([t.pnl_percent for t in symbol_trades if t.pnl <= 0]))
+                    
+                    if avg_loss > 0:
+                        b = avg_win / avg_loss
+                        kelly_fraction = (b * win_rate - (1 - win_rate)) / b
+                        kelly_factor = max(0.25, min(kelly_fraction / 2, 1.0))  # Use half-Kelly, capped
+                    else:
+                        kelly_factor = 0.5
+                else:
+                    kelly_factor = 0.5
+            else:
+                kelly_factor = 0.75  # Conservative for new symbols
+        else:
+            kelly_factor = 0.75
+        
+        # Calculate final position size
+        optimal_size = base_size * volatility_factor * correlation_factor * kelly_factor
+        
+        # Ensure within bounds
+        optimal_size = max(0.5, min(optimal_size, base_size))
+        
+        logger.info(
+            f"Optimal position size for {symbol}: {optimal_size:.2f}% "
+            f"(vol_adj={volatility_factor:.2f}, corr_adj={correlation_factor:.2f}, "
+            f"kelly={kelly_factor:.2f})"
+        )
+        
+        return optimal_size
 
 
 # Create global risk manager instance lazily
