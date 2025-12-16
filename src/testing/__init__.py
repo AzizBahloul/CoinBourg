@@ -5,7 +5,6 @@ Comprehensive testing and validation system for trading predictions.
 """
 
 from .test_engine import TestEngine, TestType, TestStatus
-from .test_tracker import TestTracker
 from .backtesting import BacktestRunner
 from .paper_trading import PaperTradingRunner
 from .forward_testing import ForwardTestRunner
@@ -18,7 +17,6 @@ __all__ = [
     'TestEngine',
     'TestType',
     'TestStatus',
-    'TestTracker',
     'BacktestRunner',
     'PaperTradingRunner',
     'ForwardTestRunner',
