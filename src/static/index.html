@@ -402,6 +402,53 @@
             </div>
         </div>
 
+        <!-- Decision Queue: upcoming buys/sells with rationale -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-3 flex items-center">
+                    <span class="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+                    Upcoming Buys
+                </h2>
+                <div class="space-y-3" x-show="decisions.buys.length">
+                    <template x-for="item in decisions.buys" :key="item.id">
+                        <div class="bg-white/5 rounded-lg p-3 border border-white/5">
+                            <div class="flex items-center justify-between text-sm">
+                                <div class="font-semibold" x-text="item.symbol"></div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-500/20 text-green-300">BUY</span>
+                                    <span class="text-xs text-gray-400" x-text="item.confidence"></span>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-300 mt-1" x-text="item.reason"></p>
+                        </div>
+                    </template>
+                </div>
+                <div x-show="!decisions.buys.length" class="text-sm text-gray-500">No buy candidates yet.</div>
+            </div>
+
+            <div class="card-gradient rounded-2xl p-6 border border-white/10">
+                <h2 class="text-lg font-semibold mb-3 flex items-center">
+                    <span class="w-2 h-2 bg-red-400 rounded-full mr-2"></span>
+                    Upcoming Sells
+                </h2>
+                <div class="space-y-3" x-show="decisions.sells.length">
+                    <template x-for="item in decisions.sells" :key="item.id">
+                        <div class="bg-white/5 rounded-lg p-3 border border-white/5">
+                            <div class="flex items-center justify-between text-sm">
+                                <div class="font-semibold" x-text="item.symbol"></div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="px-2 py-0.5 rounded text-xs font-semibold bg-red-500/20 text-red-300">SELL</span>
+                                    <span class="text-xs text-gray-400" x-text="item.confidence"></span>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-300 mt-1" x-text="item.reason"></p>
+                        </div>
+                    </template>
+                </div>
+                <div x-show="!decisions.sells.length" class="text-sm text-gray-500">No sell candidates yet.</div>
+            </div>
+        </div>
+
         <!-- Main Content Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Open Positions -->
@@ -580,6 +627,7 @@
                 status: {},
                 trades: [],
                 thoughts: [],
+                decisions: { buys: [], sells: [] },
                 analysis: null,
                 analyzeSymbol: 'BTCUSDT',
                 analyzing: false,
@@ -663,6 +711,7 @@
                     try {
                         const response = await fetch(`${this.apiUrl}/api/v1/ai/thoughts?limit=50`);
                         this.thoughts = await response.json();
+                        this.decisions = this.buildDecisionQueue(this.thoughts);
                     } catch (error) {
                         console.error('Failed to fetch thoughts:', error);
                     }
@@ -709,6 +758,22 @@
                         tp: pos.take_profit || '-',
                         trailing: pos.trailing_stop_enabled || false
                     }));
+                },
+
+                buildDecisionQueue(thoughts) {
+                    const normalize = (item) => ({
+                        id: `${item.symbol}-${item.timestamp}-${item.action}`,
+                        symbol: item.symbol,
+                        action: item.action,
+                        confidence: ((item.confidence || 0) * 100).toFixed(0) + '%',
+                        reason: (item.filtered_reason || item.reasoning || 'No rationale provided').slice(0, 180)
+                    });
+
+                    const sorted = [...(thoughts || [])].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    const buys = sorted.filter(t => (t.action || '').toUpperCase() === 'BUY').map(normalize).slice(0, 10);
+                    const sells = sorted.filter(t => (t.action || '').toUpperCase() === 'SELL').map(normalize).slice(0, 10);
+
+                    return { buys, sells };
                 },
 
                 async toggleKill() {
