@@ -585,79 +585,68 @@
                 analyzing: false,
                 apiUrl: window.location.origin,
                 safety: { master_kill: true, paper_trading: true, testnet: true },
-                freshness: [
-                    { name: 'Scanner', last: 'Just now', stale: false },
-                    { name: 'Sentiment', last: '15s ago', stale: false },
-                    { name: 'AI', last: '1m ago', stale: false },
-                    { name: 'Orderbook', last: '25s ago', stale: false },
-                ],
-                circuit: { state: 'CLOSED', failures: 0, retries: 0, last_error: '', last_checked: '' },
-                connectivity: [
-                    { name: 'Binance', up: true },
-                    { name: 'DeepSeek', up: true },
-                    { name: 'Redis', up: true },
-                    { name: 'Postgres', up: false },
-                ],
-                orchestrator: {
-                    mode: 'fallback',
-                    last_provider: 'deepseek',
-                    providers: [
-                        { name: 'DeepSeek', healthy: true, latency: 120, success_rate: 0.9 },
-                        { name: 'OpenAI', healthy: true, latency: 180, success_rate: 0.8 },
-                        { name: 'Rule-based', healthy: true, latency: 10, success_rate: 0.7 },
-                    ]
-                },
-                sentiment: {
-                    overall: 'BULLISH',
-                    score: 0.62,
-                    keywords: ['breakout', 'momentum', 'whale buy'],
-                    sources: [
-                        { name: 'Twitter', weight: 0.35 },
-                        { name: 'Reddit', weight: 0.2 },
-                        { name: 'News', weight: 0.25 },
-                        { name: 'Fear & Greed', weight: 0.2 },
-                    ]
-                },
-                risk: { preset: 'MODERATE', max_pos: 5, stop_loss: 2.5, take_profit: 4.0, utilization: 12 },
-                kpis: { equity: '10,500', sharpe: 1.2, sortino: 1.5, drawdown: 3.4 },
-                heatmap: [
-                    { symbol: 'BTCUSDT', pnl: 2.5, stop: '48,000', tp: '53,000', trailing: true },
-                    { symbol: 'ETHUSDT', pnl: -1.2, stop: '2,300', tp: '2,650', trailing: false },
-                ],
-                orderbook: { spread: '0.08%', buy: 'High', sell: 'Medium', slippage: '0.03%' },
-                strategies: [
-                    { name: 'Momentum', action: 'BUY', confidence: 0.74, reason: 'RSI trending up' },
-                    { name: 'Mean Reversion', action: 'HOLD', confidence: 0.55, reason: 'Price near fair value' },
-                    { name: 'Breakout', action: 'BUY', confidence: 0.68, reason: 'Above resistance' },
-                ],
-                timeline: [
-                    { id: 1, symbol: 'BTCUSDT', side: 'BUY', confidence: 0.78, reason: 'AI consensus', path: 'paper/testnet' },
-                    { id: 2, symbol: 'ETHUSDT', side: 'SELL', confidence: 0.61, reason: 'Momentum down', path: 'paper/testnet' },
-                ],
+                freshness: [],
+                circuit: { state: 'UNKNOWN', failures: 0, retries: 0, last_error: '', last_checked: '' },
+                connectivity: [],
+                orchestrator: { mode: 'fallback', last_provider: '-', providers: [] },
+                sentiment: { overall: '-', score: 0, keywords: [], sources: [] },
+                risk: { preset: '-', max_pos: 0, stop_loss: 0, take_profit: 0, utilization: 0 },
+                kpis: { equity: '0', sharpe: 0, sortino: 0, drawdown: 0 },
+                heatmap: [],
+                orderbook: { spread: '-', buy: '-', sell: '-', slippage: '-' },
+                strategies: [],
+                timeline: [],
                 tester: { type: 'backtest', symbols: 'BTCUSDT,ETHUSDT', preset: '30D' },
                 logsOpen: false,
-                logs: [
-                    { id: 1, level: 'info', msg: 'Scanner refreshed' },
-                    { id: 2, level: 'warn', msg: 'Binance latency high' },
-                    { id: 3, level: 'error', msg: 'Redis reconnecting' },
-                ],
+                logs: [],
 
                 async init() {
-                    await this.fetchStatus();
-                    await this.fetchTrades();
-                    await this.fetchThoughts();
-                    // Poll for updates
+                    await Promise.all([
+                        this.fetchStatus(),
+                        this.fetchTrades(),
+                        this.fetchThoughts(),
+                        this.fetchInsights(),
+                        this.fetchRiskSettings(),
+                        this.fetchPositions(),
+                        this.fetchTestResults(),
+                        this.fetchBestSymbols()
+                    ]);
                     setInterval(() => this.fetchStatus(), 5000);
                     setInterval(() => this.fetchTrades(), 10000);
                     setInterval(() => this.fetchThoughts(), 5000);
+                    setInterval(() => this.fetchInsights(), 10000);
+                    setInterval(() => this.fetchPositions(), 7000);
                 },
 
                 async fetchStatus() {
                     try {
                         const response = await fetch(`${this.apiUrl}/status`);
                         this.status = await response.json();
+                        this.risk.preset = this.status.risk_level;
+                        this.kpis.equity = (this.status.portfolio_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                        this.kpis.drawdown = (this.status.total_pnl || 0).toFixed(2);
+                        this.safety.master_kill = !this.status.is_running;
+                        this.safety.paper_trading = true; // default safety-first
+                        this.safety.testnet = true;
+                        this.heatmap = this.buildHeatmapFromPositions(this.status.positions || {});
                     } catch (error) {
                         console.error('Failed to fetch status:', error);
+                    }
+                },
+
+                async fetchRiskSettings() {
+                    try {
+                        const response = await fetch(`${this.apiUrl}/risk-settings`);
+                        const data = await response.json();
+                        this.risk = {
+                            preset: data.risk_level,
+                            max_pos: data.max_position_size_percent,
+                            stop_loss: data.stop_loss_percent,
+                            take_profit: data.take_profit_percent,
+                            utilization: (this.status?.portfolio_value || 0) > 0 ? ((this.status.total_pnl || 0) / this.status.portfolio_value * 100).toFixed(2) : 0
+                        };
+                    } catch (error) {
+                        console.error('Failed to fetch risk settings:', error);
                     }
                 },
 
@@ -677,6 +666,49 @@
                     } catch (error) {
                         console.error('Failed to fetch thoughts:', error);
                     }
+                },
+
+                async fetchPositions() {
+                    try {
+                        const response = await fetch(`${this.apiUrl}/positions`);
+                        const data = await response.json();
+                        this.status.positions = data;
+                        this.heatmap = this.buildHeatmapFromPositions(data);
+                    } catch (error) {
+                        console.error('Failed to fetch positions:', error);
+                    }
+                },
+
+                async fetchInsights() {
+                    try {
+                        const response = await fetch(`${this.apiUrl}/dashboard/insights`);
+                        const data = await response.json();
+                        this.circuit = {
+                            state: data.circuit?.state || 'UNKNOWN',
+                            failures: data.circuit?.failure_count || 0,
+                            retries: data.circuit?.success_count || 0,
+                            last_error: data.circuit?.last_failure_time || '',
+                            last_checked: data.last_checked || ''
+                        };
+                        this.connectivity = [
+                            { name: 'Binance', up: !!data.connectivity?.binance },
+                            { name: 'DeepSeek', up: !!data.connectivity?.deepseek },
+                            { name: 'Redis', up: !!data.connectivity?.redis },
+                            { name: 'Postgres', up: !!data.connectivity?.postgres },
+                        ];
+                    } catch (error) {
+                        console.error('Failed to fetch insights:', error);
+                    }
+                },
+
+                buildHeatmapFromPositions(posMap) {
+                    return Object.entries(posMap || {}).map(([symbol, pos]) => ({
+                        symbol,
+                        pnl: pos.unrealized_pnl_percent || 0,
+                        stop: pos.stop_loss || '-',
+                        tp: pos.take_profit || '-',
+                        trailing: pos.trailing_stop_enabled || false
+                    }));
                 },
 
                 async toggleKill() {
@@ -721,10 +753,30 @@
                             body: JSON.stringify({ symbol: this.analyzeSymbol })
                         });
                         this.analysis = await response.json();
+                        if (this.analysis) {
+                            this.sentiment.overall = this.analysis.sentiment || '-';
+                            this.sentiment.score = this.analysis.confidence || 0;
+                        }
                     } catch (error) {
                         console.error('Failed to run analysis:', error);
                     } finally {
                         this.analyzing = false;
+                    }
+                },
+
+                async fetchTestResults() {
+                    try {
+                        await fetch(`${this.apiUrl}/api/tests/results?limit=1`);
+                    } catch (error) {
+                        console.error('Failed to fetch test results:', error);
+                    }
+                },
+
+                async fetchBestSymbols() {
+                    try {
+                        await fetch(`${this.apiUrl}/api/tests/best-symbols?limit=1`);
+                    } catch (error) {
+                        console.error('Failed to fetch best symbols:', error);
                     }
                 },
 

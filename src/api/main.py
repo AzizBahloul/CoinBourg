@@ -360,6 +360,37 @@ async def detailed_health_check(engine: TradingEngine = Depends(get_engine)):
     return overall_health
 
 
+@app.get("/dashboard/insights", tags=["General"])
+async def dashboard_insights(engine: TradingEngine = Depends(get_engine)):
+    """Surface operational insights for the UI (circuit breaker, connectivity)."""
+    circuit_info = {}
+    try:
+        if engine and engine.binance and hasattr(engine.binance, "circuit_breaker"):
+            cb = engine.binance.circuit_breaker
+            circuit_info = {
+                "state": cb.state if hasattr(cb, "state") else "unknown",
+                "failure_count": getattr(cb, "failure_count", 0),
+                "success_count": getattr(cb, "success_count", 0),
+                "last_failure_time": cb.last_failure_time.isoformat() if getattr(cb, "last_failure_time", None) else None,
+                "half_open_successes": getattr(cb, "half_open_successes", 0),
+            }
+    except Exception as e:
+        logger.warning(f"Failed to gather circuit info: {e}")
+
+    connectivity = {
+        "binance": bool(getattr(engine, "binance_available", False)),
+        "deepseek": bool(getattr(engine, "deepseek_available", False)),
+        "redis": False,
+        "postgres": False,
+    }
+
+    return {
+        "circuit": circuit_info,
+        "connectivity": connectivity,
+        "last_checked": datetime.utcnow().isoformat(),
+    }
+
+
 @app.get("/metrics")
 async def metrics():
     """

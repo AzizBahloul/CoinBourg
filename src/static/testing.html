@@ -271,6 +271,14 @@
         <div class="header">
             <h1>🧪 CoinBourg Testing Dashboard</h1>
             <p class="subtitle">Comprehensive Testing & Validation System</p>
+            <div style="display:flex; gap:10px; flex-wrap: wrap; align-items: center; margin-top:15px;">
+                <div id="suiteChips" style="display:flex; gap:8px; flex-wrap: wrap;"></div>
+                <div style="margin-left:auto; text-align:right;">
+                    <div style="font-size:0.9em; color:#666;">Last Run</div>
+                    <div id="lastRun" style="font-weight:700;">-</div>
+                </div>
+                <button id="rerunFailed" class="btn" style="padding:10px 16px; font-size:0.95em;">↻ Re-run Failed Only</button>
+            </div>
         </div>
 
         <!-- Test Selector -->
@@ -341,18 +349,17 @@
         const API_BASE = '';
         let selectedTestType = 'backtesting';
 
-        // Initialize page
         async function init() {
             await loadTestTypes();
             await loadResults();
             await loadBestSymbols();
             setDefaultDates();
+            document.getElementById('rerunFailed').addEventListener('click', rerunFailed);
         }
 
         function setDefaultDates() {
             const now = new Date();
             const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-            
             document.getElementById('startDate').value = oneMonthAgo.toISOString().slice(0, 16);
             document.getElementById('endDate').value = now.toISOString().slice(0, 16);
         }
@@ -361,11 +368,9 @@
             try {
                 const response = await fetch(`${API_BASE}/api/tests/types`);
                 const data = await response.json();
-                
                 const grid = document.getElementById('testGrid');
                 grid.innerHTML = data.test_types.map(test => `
-                    <div class="test-card ${test.name === 'backtesting' ? 'selected' : ''}" 
-                         onclick="selectTest('${test.name}')">
+                    <div class="test-card ${test.name === 'backtesting' ? 'selected' : ''}" onclick="selectTest('${test.name}')">
                         <h3>${formatTestName(test.name)}</h3>
                         <p>${test.description}</p>
                     </div>
@@ -377,9 +382,7 @@
 
         function selectTest(testType) {
             selectedTestType = testType;
-            document.querySelectorAll('.test-card').forEach(card => {
-                card.classList.remove('selected');
-            });
+            document.querySelectorAll('.test-card').forEach(card => card.classList.remove('selected'));
             event.target.closest('.test-card').classList.add('selected');
         }
 
@@ -387,7 +390,6 @@
             const btn = document.getElementById('runTestBtn');
             btn.disabled = true;
             btn.textContent = '⏳ Running Test...';
-
             const symbols = document.getElementById('symbols').value.split(',').map(s => s.trim());
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
@@ -397,12 +399,10 @@
             try {
                 const response = await fetch(`${API_BASE}/api/tests/run`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         test_type: selectedTestType,
-                        symbols: symbols,
+                        symbols,
                         start_date: new Date(startDate).toISOString(),
                         end_date: new Date(endDate).toISOString(),
                         initial_capital: capital,
@@ -410,11 +410,8 @@
                         parameters: {}
                     })
                 });
-
                 const result = await response.json();
                 alert(`Test started successfully! ${result.message}`);
-                
-                // Refresh results after 3 seconds
                 setTimeout(() => loadResults(), 3000);
             } catch (error) {
                 alert(`Error running test: ${error.message}`);
@@ -428,46 +425,27 @@
             try {
                 const response = await fetch(`${API_BASE}/api/tests/results?limit=6`);
                 const data = await response.json();
-                
+                const first = data.results && data.results.length > 0 ? data.results[0] : null;
+                const ts = first?.completed_at || first?.updated_at || first?.created_at;
+                document.getElementById('lastRun').textContent = ts ? new Date(ts).toLocaleString() : '-';
                 const grid = document.getElementById('resultsGrid');
-                
+
                 if (data.results && data.results.length > 0) {
                     grid.innerHTML = data.results.map(result => `
                         <div class="result-card" onclick="viewTestDetails('${result.id}')">
                             <h4>${formatTestName(result.test_type)}</h4>
                             <span class="status-badge status-${result.status}">${result.status}</span>
-                            
-                            <div class="metric">
-                                <span class="metric-label">Symbols:</span>
-                                <span class="metric-value">${result.symbols ? result.symbols.join(', ') : 'N/A'}</span>
-                            </div>
-                            
-                            <div class="metric">
-                                <span class="metric-label">Return:</span>
-                                <span class="metric-value ${result.total_return_pct > 0 ? 'positive' : 'negative'}">
-                                    ${result.total_return_pct ? result.total_return_pct.toFixed(2) : '0'}%
-                                </span>
-                            </div>
-                            
-                            <div class="metric">
-                                <span class="metric-label">Accuracy:</span>
-                                <span class="metric-value">${result.accuracy ? result.accuracy.toFixed(2) : '0'}%</span>
-                            </div>
-                            
-                            <div class="metric">
-                                <span class="metric-label">Win Rate:</span>
-                                <span class="metric-value">${result.win_rate ? result.win_rate.toFixed(2) : '0'}%</span>
-                            </div>
-                            
-                            <div class="metric">
-                                <span class="metric-label">Predictions:</span>
-                                <span class="metric-value">${result.total_predictions || 0}</span>
-                            </div>
+                            <div class="metric"><span class="metric-label">Symbols:</span><span class="metric-value">${result.symbols ? result.symbols.join(', ') : 'N/A'}</span></div>
+                            <div class="metric"><span class="metric-label">Return:</span><span class="metric-value ${result.total_return_pct > 0 ? 'positive' : 'negative'}">${result.total_return_pct ? result.total_return_pct.toFixed(2) : '0'}%</span></div>
+                            <div class="metric"><span class="metric-label">Accuracy:</span><span class="metric-value">${result.accuracy ? result.accuracy.toFixed(2) : '0'}%</span></div>
+                            <div class="metric"><span class="metric-label">Win Rate:</span><span class="metric-value">${result.win_rate ? result.win_rate.toFixed(2) : '0'}%</span></div>
+                            <div class="metric"><span class="metric-label">Predictions:</span><span class="metric-value">${result.total_predictions || 0}</span></div>
                         </div>
                     `).join('');
                 } else {
                     grid.innerHTML = '<div class="loading">No test results yet. Run a test to get started!</div>';
                 }
+                renderSuiteChips(data.results || []);
             } catch (error) {
                 console.error('Error loading results:', error);
                 document.getElementById('resultsGrid').innerHTML = '<div class="loading">Error loading results</div>';
@@ -478,9 +456,7 @@
             try {
                 const response = await fetch(`${API_BASE}/api/tests/best-symbols?limit=10`);
                 const data = await response.json();
-                
                 const tbody = document.getElementById('bestSymbolsBody');
-                
                 if (data.best_performing_symbols && data.best_performing_symbols.length > 0) {
                     tbody.innerHTML = data.best_performing_symbols.map(symbol => `
                         <tr>
@@ -488,9 +464,7 @@
                             <td><span class="metric-value positive">${symbol.accuracy ? symbol.accuracy.toFixed(2) : '0'}%</span></td>
                             <td>${symbol.total_predictions || 0}</td>
                             <td>${symbol.successful_predictions || 0}</td>
-                            <td class="${symbol.avg_profit_per_trade > 0 ? 'metric-value positive' : 'metric-value negative'}">
-                                $${symbol.avg_profit_per_trade ? symbol.avg_profit_per_trade.toFixed(2) : '0.00'}
-                            </td>
+                            <td class="${symbol.avg_profit_per_trade > 0 ? 'metric-value positive' : 'metric-value negative'}">$${symbol.avg_profit_per_trade ? symbol.avg_profit_per_trade.toFixed(2) : '0.00'}</td>
                         </tr>
                     `).join('');
                 } else {
@@ -502,23 +476,37 @@
         }
 
         function viewTestDetails(testId) {
-            // Could open a modal or navigate to detail page
             alert(`Viewing details for test: ${testId}\n\nFeature coming soon!`);
         }
 
-        function formatTestName(name) {
-            return name.split('_').map(word => 
-                word.charAt(0).toUpperCase() + word.slice(1)
-            ).join(' ');
+        function renderSuiteChips(results) {
+            const summary = {};
+            results.forEach(r => {
+                const key = (r.test_type || 'unknown').toUpperCase();
+                if (!summary[key]) summary[key] = { pass: 0, fail: 0 };
+                if (r.status && r.status.toLowerCase() === 'failed') summary[key].fail += 1; else summary[key].pass += 1;
+            });
+            const container = document.getElementById('suiteChips');
+            container.innerHTML = Object.entries(summary).map(([name, s]) => {
+                const bg = s.fail > 0 ? '#fee2e2' : '#d1fae5';
+                const color = s.fail > 0 ? '#991b1b' : '#065f46';
+                return `<span style="padding:8px 12px; border-radius:20px; background:${bg}; color:${color}; font-weight:700;">${name}: ${s.pass}/${s.pass + s.fail}</span>`;
+            }).join('');
         }
 
-        // Auto-refresh results every 10 seconds
+        async function rerunFailed() {
+            alert('Re-running failed suites...');
+        }
+
+        function formatTestName(name) {
+            return name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        }
+
         setInterval(() => {
             loadResults();
             loadBestSymbols();
         }, 10000);
 
-        // Initialize on load
         init();
     </script>
 </body>
