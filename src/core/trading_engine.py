@@ -122,27 +122,12 @@ class TradingEngine:
         self.deepseek = DeepSeekClient()
         self.state_manager = StateManager()  # State persistence
 
-        # Lightweight components for tests (avoid network dependencies)
-        class _TestCoinSelector:
-            async def scan_market(self, force_refresh: bool = False):
-                return ["BTCUSDT", "ETHUSDT"]
-
-        class _TestMarketScanner:
-            async def fetch_price_data(self, symbol: str):
-                return {"close": pd.Series([50000.0, 51000.0])}
-
-            async def calculate_indicators(self, _data: Dict):
-                return {"RSI_14": 55.0}
-
-        class _TestStrategyManager:
-            async def get_consensus(self, symbol: str, price_data: Dict, indicators: Dict, market_context: Dict):
-                return [{"strategy": "stub", "action": "HOLD", "confidence": 0.5}]
-
-        self.coin_selector = _TestCoinSelector()
-        self.market_scanner = _TestMarketScanner()
-        self.strategy_manager = _TestStrategyManager()
+        # Initialize real trading components
+        self.coin_selector = CoinSelector()
+        self.market_scanner = MarketScanner()
+        self.strategy_manager = StrategyManager()
         self.risk_manager = RiskManager()
-        self.paper_trading = True
+        self.paper_trading = self.settings.PAPER_TRADING
         
         # Trading state
         # Internal state
@@ -238,8 +223,8 @@ class TradingEngine:
         
         if not self.binance_available:
             logger.warning("⚠ Running in DEMO MODE - no real trading")
-            self.metrics["current_value"] = 10000.0  # Demo balance
-            self.metrics["peak_value"] = 10000.0
+            self.metrics["current_value"] = 100.0  # Demo balance ($100 for testing)
+            self.metrics["peak_value"] = 100.0
         
         # Check for incomplete trades
         if self.binance_available:
@@ -867,9 +852,23 @@ class TradingEngine:
                 if (current_time - last_analysis_time).total_seconds() >= analysis_interval:
                     logger.info("Running market analysis...")
                     
-                    for symbol in self.settings.TRADING_PAIRS:
+                    # Get dynamic list of coins (respects DYNAMIC_PAIR_SELECTION setting)
+                    if self.settings.DYNAMIC_PAIR_SELECTION and self.binance_available:
+                        try:
+                            symbols_to_analyze = await self.coin_selector.scan_market()
+                            logger.info(f"Dynamic scan returned {len(symbols_to_analyze)} coins")
+                        except Exception as e:
+                            logger.warning(f"Dynamic scan failed, using default pairs: {e}")
+                            symbols_to_analyze = self.settings.TRADING_PAIRS
+                    else:
+                        symbols_to_analyze = self.settings.TRADING_PAIRS
+                    
+                    # Analyze all symbols (don't stop after 5)
+                    analyzed_count = 0
+                    for symbol in symbols_to_analyze:
                         try:
                             decision = await self.analyze_and_decide(symbol)
+                            analyzed_count += 1
                             
                             if decision and decision['action'] in ['BUY', 'SELL']:
                                 if 'filtered_reason' not in decision:
@@ -886,9 +885,10 @@ class TradingEngine:
                         except Exception as e:
                             logger.error(f"Error analyzing {symbol}: {e}")
                         
-                        # Small delay between symbols
+                        # Small delay between symbols to avoid rate limits
                         await asyncio.sleep(1)
                     
+                    logger.info(f"Completed analysis cycle: {analyzed_count}/{len(symbols_to_analyze)} coins")
                     last_analysis_time = current_time
                 
                 # Wait before next iteration
