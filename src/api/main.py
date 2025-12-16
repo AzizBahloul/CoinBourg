@@ -679,7 +679,7 @@ class TestRunRequest(BaseModel):
     symbols: List[str] = Field(..., description="Trading pairs to test")
     start_date: str = Field(..., description="Start date ISO format")
     end_date: str = Field(..., description="End date ISO format")
-    initial_capital: float = Field(default=10000.0, gt=0)
+    initial_capital: float = Field(default=100.0, gt=0)
     risk_level: str = Field(default="MODERATE")
     parameters: Dict = Field(default_factory=dict)
 

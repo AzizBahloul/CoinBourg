@@ -47,7 +47,7 @@ class TestConfiguration:
     symbols: List[str]
     start_date: datetime
     end_date: datetime
-    initial_capital: float = 10000.0
+    initial_capital: float = 100.0
     risk_level: str = "MODERATE"
     strategies: List[str] = field(default_factory=list)
     parameters: Dict[str, Any] = field(default_factory=dict)
@@ -90,7 +90,7 @@ class TestResult:
     accuracy: float = 0.0
     
     # Financial metrics
-    initial_capital: float = 10000.0
+    initial_capital: float = 100.0
     final_capital: float = 0.0
     total_return: float = 0.0
     total_return_pct: float = 0.0
