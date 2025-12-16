@@ -8,6 +8,9 @@ FROM python:3.11-slim as builder
 
 WORKDIR /app
 
+# Ensure project root is on Python path for module imports
+ENV PYTHONPATH="/app"
+
 # Install build dependencies (single line to avoid escape issues)
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential curl && rm -rf /var/lib/apt/lists/* && apt-get clean
 
@@ -56,4 +59,4 @@ USER coinbourg
 EXPOSE 8000
 
 # Default command (can be overridden)
-CMD ["python", "src/main.py", "--mode", "api"]
+CMD ["python", "-m", "src.main", "--mode", "api"]
