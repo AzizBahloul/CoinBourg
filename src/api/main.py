@@ -290,6 +290,18 @@ async def root():
         }
 
 
+@app.get("/testing", tags=["General"])
+async def testing_dashboard():
+    """Serve the testing dashboard UI."""
+    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+    testing_file = os.path.join(static_dir, "testing.html")
+    
+    if os.path.exists(testing_file):
+        return FileResponse(testing_file)
+    else:
+        raise HTTPException(status_code=404, detail="Testing dashboard not found")
+
+
 @app.get("/api/info", tags=["General"])
 async def api_info():
     """API information endpoint."""
@@ -562,6 +574,226 @@ async def get_ai_thoughts(
 ):
     """Get recent AI thoughts and analysis."""
     return engine.ai_thoughts[:limit]
+
+
+# ===========================================
+# Testing & Validation Endpoints
+# ===========================================
+
+from src.testing.test_engine import TestEngine, TestType, TestConfiguration
+from src.testing.test_tracker import TestDatabaseManager
+
+test_engine_instance = None
+test_db_manager = None
+
+async def get_test_engine():
+    """Get or create test engine instance."""
+    global test_engine_instance, test_db_manager
+    if test_engine_instance is None:
+        test_db_manager = TestDatabaseManager()
+        await test_db_manager.connect()
+        test_engine_instance = TestEngine(test_db_manager)
+    return test_engine_instance
+
+
+class TestRunRequest(BaseModel):
+    """Request to run a test."""
+    test_type: str = Field(..., description="Type of test to run")
+    symbols: List[str] = Field(..., description="Trading pairs to test")
+    start_date: str = Field(..., description="Start date ISO format")
+    end_date: str = Field(..., description="End date ISO format")
+    initial_capital: float = Field(default=10000.0, gt=0)
+    risk_level: str = Field(default="MODERATE")
+    parameters: Dict = Field(default_factory=dict)
+
+
+@app.post("/api/tests/run", tags=["Testing"])
+async def run_test(
+    request: TestRunRequest,
+    background_tasks: BackgroundTasks,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Run a comprehensive test.
+    
+    Available test types:
+    - backtesting: Test on historical data
+    - paper_trading: Real-time simulation
+    - forward_testing: Test on new data
+    - out_of_sample: Validate on separate dataset
+    - monte_carlo: Randomized simulations
+    - signal_validation: Validate buy/sell signals
+    - prediction_accuracy: Measure prediction accuracy
+    - benchmark_comparison: Compare vs buy-and-hold
+    - live_testing: Small capital real testing
+    - post_trade_analysis: Review completed trades
+    """
+    try:
+        engine = await get_test_engine()
+        
+        # Parse test type
+        test_type = TestType(request.test_type.lower())
+        
+        # Create configuration
+        config = TestConfiguration(
+            test_type=test_type,
+            symbols=request.symbols,
+            start_date=datetime.fromisoformat(request.start_date),
+            end_date=datetime.fromisoformat(request.end_date),
+            initial_capital=request.initial_capital,
+            risk_level=request.risk_level,
+            parameters=request.parameters
+        )
+        
+        # Run test in background
+        background_tasks.add_task(engine.run_test, test_type, config)
+        
+        return {
+            "status": "Test started",
+            "test_type": test_type.value,
+            "symbols": request.symbols,
+            "message": "Test is running in background. Use GET /api/tests/results to check progress."
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid test type: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error starting test: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tests/results", tags=["Testing"])
+async def get_test_results(
+    test_run_id: Optional[str] = None,
+    test_type: Optional[str] = None,
+    limit: int = 100,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Get test results."""
+    try:
+        engine = await get_test_engine()
+        
+        test_type_enum = TestType(test_type.lower()) if test_type else None
+        
+        results = await engine.get_test_results(
+            test_run_id=test_run_id,
+            test_type=test_type_enum,
+            limit=limit
+        )
+        
+        return {
+            "total": len(results),
+            "results": results
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting test results: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tests/{test_run_id}/predictions", tags=["Testing"])
+async def get_test_predictions(
+    test_run_id: str,
+    symbol: Optional[str] = None,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Get predictions for a specific test run."""
+    try:
+        engine = await get_test_engine()
+        
+        predictions = await engine.get_prediction_tracker(
+            symbol=symbol,
+            test_run_id=test_run_id
+        )
+        
+        return {
+            "test_run_id": test_run_id,
+            "total_predictions": len(predictions),
+            "predictions": predictions
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting predictions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tests/best-symbols", tags=["Testing"])
+async def get_best_performing_symbols(
+    test_type: Optional[str] = None,
+    limit: int = 10,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Get cryptocurrencies with best prediction accuracy.
+    
+    Shows which coins the model predicts most successfully.
+    """
+    try:
+        engine = await get_test_engine()
+        
+        test_type_enum = TestType(test_type.lower()) if test_type else None
+        
+        best_symbols = await engine.get_best_performing_symbols(
+            test_type=test_type_enum,
+            limit=limit
+        )
+        
+        return {
+            "best_performing_symbols": best_symbols
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting best symbols: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tests/types", tags=["Testing"])
+async def get_available_test_types():
+    """Get all available test types and their descriptions."""
+    return {
+        "test_types": [
+            {
+                "name": "backtesting",
+                "description": "Test strategy on historical market data"
+            },
+            {
+                "name": "paper_trading",
+                "description": "Real-time predictions without real money"
+            },
+            {
+                "name": "forward_testing",
+                "description": "Test on new, unseen data after backtesting"
+            },
+            {
+                "name": "out_of_sample",
+                "description": "Validate on separate dataset not used in training"
+            },
+            {
+                "name": "monte_carlo",
+                "description": "Randomized simulations to test robustness"
+            },
+            {
+                "name": "signal_validation",
+                "description": "Check if buy/sell signals lead to profit"
+            },
+            {
+                "name": "prediction_accuracy",
+                "description": "Measure how often predictions are correct"
+            },
+            {
+                "name": "benchmark_comparison",
+                "description": "Compare vs buy-and-hold strategy"
+            },
+            {
+                "name": "live_testing",
+                "description": "Small capital real market testing"
+            },
+            {
+                "name": "post_trade_analysis",
+                "description": "Review and analyze completed trades"
+            }
+        ]
+    }
 
 
 # Error handlers

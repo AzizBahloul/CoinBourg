@@ -139,6 +139,121 @@ CREATE INDEX idx_audit_log_action ON audit_log(action);
 CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
 
 -- ===========================================
+-- Testing Framework Tables
+-- ===========================================
+
+-- Test Runs Table
+CREATE TABLE IF NOT EXISTS test_runs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    test_type VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    symbols TEXT[], -- Array of trading pairs
+    start_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    initial_capital DECIMAL(20, 8) DEFAULT 10000.0,
+    final_capital DECIMAL(20, 8),
+    total_return DECIMAL(20, 8),
+    total_return_pct DECIMAL(10, 4),
+    
+    -- Performance metrics
+    sharpe_ratio DECIMAL(10, 4),
+    max_drawdown DECIMAL(10, 4),
+    win_rate DECIMAL(5, 2),
+    profit_factor DECIMAL(10, 4),
+    
+    -- Statistics
+    total_predictions INTEGER DEFAULT 0,
+    successful_predictions INTEGER DEFAULT 0,
+    failed_predictions INTEGER DEFAULT 0,
+    accuracy DECIMAL(5, 2),
+    total_trades INTEGER DEFAULT 0,
+    winning_trades INTEGER DEFAULT 0,
+    losing_trades INTEGER DEFAULT 0,
+    avg_profit_per_trade DECIMAL(20, 8),
+    
+    -- Metadata
+    configuration JSONB,
+    symbol_results JSONB,
+    details JSONB,
+    errors TEXT[],
+    execution_time DECIMAL(10, 2),
+    
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_test_runs_test_type ON test_runs(test_type);
+CREATE INDEX idx_test_runs_status ON test_runs(status);
+CREATE INDEX idx_test_runs_created_at ON test_runs(created_at);
+
+-- Predictions Table
+CREATE TABLE IF NOT EXISTS predictions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    test_run_id UUID REFERENCES test_runs(id) ON DELETE CASCADE,
+    symbol VARCHAR(20) NOT NULL,
+    prediction_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    predicted_action VARCHAR(10) NOT NULL, -- BUY, SELL, HOLD
+    predicted_price DECIMAL(20, 8) NOT NULL,
+    predicted_direction VARCHAR(10) NOT NULL, -- UP, DOWN, NEUTRAL
+    confidence DECIMAL(5, 4),
+    
+    -- Actual outcome
+    actual_price DECIMAL(20, 8),
+    actual_direction VARCHAR(10),
+    outcome VARCHAR(20), -- SUCCESS, FAILURE, PARTIAL
+    profit_loss DECIMAL(20, 8),
+    profit_loss_pct DECIMAL(10, 4),
+    time_to_outcome INTEGER, -- seconds
+    
+    -- AI details
+    ai_reasoning TEXT,
+    ai_confidence DECIMAL(5, 4),
+    strategy_used VARCHAR(50),
+    
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_predictions_test_run_id ON predictions(test_run_id);
+CREATE INDEX idx_predictions_symbol ON predictions(symbol);
+CREATE INDEX idx_predictions_prediction_time ON predictions(prediction_time);
+CREATE INDEX idx_predictions_outcome ON predictions(outcome);
+
+-- Test Equity Curve Table
+CREATE TABLE IF NOT EXISTS test_equity_curve (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    test_run_id UUID REFERENCES test_runs(id) ON DELETE CASCADE,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    equity_value DECIMAL(20, 8) NOT NULL,
+    drawdown DECIMAL(10, 4),
+    positions_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_test_equity_curve_test_run_id ON test_equity_curve(test_run_id);
+CREATE INDEX idx_test_equity_curve_timestamp ON test_equity_curve(timestamp);
+
+-- Symbol Performance Tracking
+CREATE TABLE IF NOT EXISTS symbol_performance (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    symbol VARCHAR(20) NOT NULL,
+    test_type VARCHAR(50),
+    total_predictions INTEGER DEFAULT 0,
+    successful_predictions INTEGER DEFAULT 0,
+    accuracy DECIMAL(5, 2),
+    total_profit_loss DECIMAL(20, 8),
+    avg_profit_per_trade DECIMAL(20, 8),
+    best_trade DECIMAL(20, 8),
+    worst_trade DECIMAL(20, 8),
+    sharpe_ratio DECIMAL(10, 4),
+    last_updated TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE(symbol, test_type)
+);
+
+CREATE INDEX idx_symbol_performance_symbol ON symbol_performance(symbol);
+CREATE INDEX idx_symbol_performance_accuracy ON symbol_performance(accuracy DESC);
+
+-- ===========================================
 -- Functions and Triggers
 -- ===========================================
 
@@ -149,7 +264,7 @@ BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 -- Apply triggers
 CREATE TRIGGER update_trades_updated_at
