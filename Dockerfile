@@ -9,7 +9,11 @@ FROM python:3.11-slim as builder
 WORKDIR /app
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \\\n    build-essential \\\n    curl \\\n    && rm -rf /var/lib/apt/lists/* \\\n    && apt-get clean
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Copy requirements first for better caching
 COPY requirements.txt .
@@ -50,37 +54,13 @@ COPY --chown=coinbourg:coinbourg . .
 # These need to be writable by the coinbourg user for logs and data storage
 RUN mkdir -p /app/logs /app/data /app/__pycache__ \
     && chown -R coinbourg:coinbourg /app \
-    && chmod -R 755 /app \
-    && chmod -R 755 /app/logs \
-    && chmod -R 755 /app/data
+    && chmod -R 755 /app
 
-# Ensure all Python cache and log directories are writable
-RUN find /app -type d -exec chmod 755 {} + \
-    && find /app -type f -exec chmod 644 {} + \
-    && chmod +x /app/scripts/*.sh 2>/dev/null || true
+# Switch to non-root user
+USER coinbourg
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+# Expose API port
+EXPOSE 8000
 
-# Install gosu for privilege dropping (Debian equivalent of su-exec)
-RUN apt-get update && apt-get install -y --no-install-recommends gosu \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create and prepare directories
-RUN mkdir -p /app/logs /app/data \
-    && chown coinbourg:coinbourg /app/logs /app/data \
-    && chmod 755 /app/logs /app/data
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
-
-# Use entrypoint script for validation before running app
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["python", "-m", "src.main", "--mode", "api"]
+# Default command (can be overridden)
+CMD ["python", "src/main.py", "--mode", "api"]
