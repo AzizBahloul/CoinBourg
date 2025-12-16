@@ -122,9 +122,9 @@ class TradingEngine:
         self.deepseek = DeepSeekClient()
         self.state_manager = StateManager()  # State persistence
 
-        # Initialize real trading components
-        self.coin_selector = CoinSelector()
-        self.market_scanner = MarketScanner()
+        # Initialize real trading components (pass dependencies)
+        self.coin_selector = CoinSelector(self.binance)
+        self.market_scanner = MarketScanner(self.binance)
         self.strategy_manager = StrategyManager()
         self.risk_manager = RiskManager()
         self.paper_trading = self.settings.PAPER_TRADING
