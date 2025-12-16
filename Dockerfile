@@ -8,12 +8,8 @@ FROM python:3.11-slim as builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+# Install build dependencies (single line to avoid escape issues)
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential curl && rm -rf /var/lib/apt/lists/* && apt-get clean
 
 # Copy requirements first for better caching
 COPY requirements.txt .
@@ -34,11 +30,8 @@ FROM python:3.11-slim as production
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+# Install runtime dependencies (single line to avoid escape issues)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* && apt-get clean
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
