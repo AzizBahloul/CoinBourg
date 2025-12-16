@@ -1,1 +1,0 @@
-"""CoinBourg Test Suite"""
