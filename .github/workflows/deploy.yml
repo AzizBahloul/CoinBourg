@@ -10,6 +10,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo docker system prune -af
+          df -h
+
       - name: Create deployment archive
         run: |
           tar -czf /tmp/deploy.tar.gz \
@@ -96,8 +105,12 @@ jobs:
             echo "Removing existing network..."
             docker network rm coinbourg_coinbourg-network 2>/dev/null || true
             
+            # Clean up Docker to free space
+            echo "Cleaning up Docker resources..."
+            docker system prune -af --volumes || true
+            
             echo "Starting containers..."
-            docker compose up -d --build
+            docker compose up -d --build --no-cache
             
             # Wait for containers to start
             echo "Waiting for containers to initialize (30s)..."

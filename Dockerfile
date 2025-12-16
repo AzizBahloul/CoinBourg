@@ -9,10 +9,7 @@ FROM python:3.11-slim as builder
 WORKDIR /app
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \\\n    build-essential \\\n    curl \\\n    && rm -rf /var/lib/apt/lists/* \\\n    && apt-get clean
 
 # Copy requirements first for better caching
 COPY requirements.txt .
@@ -20,8 +17,13 @@ COPY requirements.txt .
 # Create virtual environment and install dependencies
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+# Install pip packages in stages to manage disk space
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    find /opt/venv -type f -name '*.pyc' -delete && \
+    find /opt/venv -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true && \
+    find /opt/venv -type d -name 'test' -exec rm -rf {} + 2>/dev/null || true && \
+    find /opt/venv -type d -name 'tests' -exec rm -rf {} + 2>/dev/null || true
 
 # Stage 2: Production stage
 FROM python:3.11-slim as production
