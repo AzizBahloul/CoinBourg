@@ -124,7 +124,7 @@ class TradingEngine:
 
         # Initialize real trading components (pass dependencies)
         self.coin_selector = CoinSelector(self.binance)
-        self.market_scanner = MarketScanner(self.binance)
+        self.market_scanner = MarketScanner(self.binance, self.coin_selector)
         self.strategy_manager = StrategyManager()
         self.risk_manager = RiskManager()
         self.paper_trading = self.settings.PAPER_TRADING
