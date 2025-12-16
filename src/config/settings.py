@@ -26,14 +26,14 @@ class Settings(BaseSettings):
     # ===========================================
     # API Keys
     # ===========================================
-    # DeepSeek AI
-    DEEPSEEK_API_KEY: str = Field(..., description="DeepSeek API key for AI analysis")
+    # DeepSeek AI (defaults allow API to boot without secrets; set real keys in production)
+    DEEPSEEK_API_KEY: str = Field(default="CHANGE_ME", description="DeepSeek API key for AI analysis")
     DEEPSEEK_BASE_URL: str = Field(default="https://api.deepseek.com", description="DeepSeek API base URL")
     DEEPSEEK_MODEL: str = Field(default="deepseek-chat", description="DeepSeek model to use")
     
-    # Binance
-    BINANCE_API_KEY: str = Field(..., description="Binance API key")
-    BINANCE_API_SECRET: str = Field(..., description="Binance API secret")
+    # Binance (defaults allow API to boot without secrets; set real keys in production)
+    BINANCE_API_KEY: str = Field(default="CHANGE_ME", description="Binance API key")
+    BINANCE_API_SECRET: str = Field(default="CHANGE_ME", description="Binance API secret")
     BINANCE_TESTNET: bool = Field(default=True, description="Use Binance testnet")
     
  
@@ -100,6 +100,13 @@ class Settings(BaseSettings):
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="Log format"
     )
+
+    def model_post_init(self, __context):
+        # Guardrails: refuse to enable live trading without real exchange keys
+        if self.TRADING_ENABLED and (
+            self.BINANCE_API_KEY == "CHANGE_ME" or self.BINANCE_API_SECRET == "CHANGE_ME"
+        ):
+            raise ValueError("TRADING_ENABLED=true requires real Binance API credentials")
     
     @validator('RISK_LEVEL')
     def validate_risk_level(cls, v):
