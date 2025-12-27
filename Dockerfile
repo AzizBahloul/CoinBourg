@@ -58,5 +58,5 @@ USER coinbourg
 # Expose API port
 EXPOSE 8000
 
-# Default command (can be overridden)
-CMD ["python", "-m", "src.main", "--mode", "api"]
+# Default command: run both API and trading loop
+CMD ["python", "-m", "src.main", "--mode", "both"]

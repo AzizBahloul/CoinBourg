@@ -21,6 +21,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://coinbourg:coinbourg_secure_password@db:5432/coinbourg
       - REDIS_URL=redis://redis:6379/0
+      - AUTO_START_BOT=true
     env_file:
       - .env
     volumes:

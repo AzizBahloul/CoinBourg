@@ -210,6 +210,11 @@ async def lifespan(app: FastAPI):
     try:
         await trading_engine.initialize()
         logger.info("Trading engine initialized")
+        
+        # Auto-start trading loop in Docker/production environments
+        if os.getenv("AUTO_START_BOT", "false").lower() == "true":
+            logger.info("AUTO_START_BOT=true - Starting trading loop automatically...")
+            asyncio.create_task(trading_engine.run())
     except Exception as e:
         logger.error(f"Failed to initialize trading engine: {e}")
     
