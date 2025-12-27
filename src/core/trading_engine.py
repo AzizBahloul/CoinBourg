@@ -897,10 +897,18 @@ class TradingEngine:
     
     async def run(self):
         """Main trading loop."""
-        await self.initialize()
-        self.is_running = True
+        # Don't reinitialize - lifespan already did that
+        if not hasattr(self, 'settings'):
+            await self.initialize()
         
+        self.is_running = True
+        logger.info("=" * 60)
         logger.info("Starting main trading loop...")
+        logger.info(f"Analysis interval: {self.settings.ANALYSIS_INTERVAL_SECONDS}s")
+        logger.info(f"Binance available: {self.binance_available}")
+        logger.info(f"DeepSeek available: {self.deepseek_available}")
+        logger.info(f"Demo mode: {'YES' if not self.binance_available else 'NO'}")
+        logger.info("=" * 60)
         
         analysis_interval = self.settings.ANALYSIS_INTERVAL_SECONDS
         price_check_interval = self.settings.PRICE_CHECK_INTERVAL_SECONDS
@@ -937,9 +945,11 @@ class TradingEngine:
                 
                 # Perform analysis if interval has passed
                 if (current_time - last_analysis_time).total_seconds() >= analysis_interval:
-                    logger.info("Running market analysis...")
+                    logger.info(f"\n{'='*50}")
+                    logger.info(f"Starting analysis cycle at {current_time.strftime('%H:%M:%S')}")
+                    logger.info(f"{'='*50}")
                     
-                    # Get dynamic list of coins (respects DYNAMIC_PAIR_SELECTION setting)
+                    # Get symbols to analyze
                     if self.settings.DYNAMIC_PAIR_SELECTION and self.binance_available:
                         try:
                             symbols_to_analyze = await self.coin_selector.scan_market()
@@ -948,6 +958,9 @@ class TradingEngine:
                             logger.warning(f"Dynamic scan failed, using default pairs: {e}")
                             symbols_to_analyze = self.settings.TRADING_PAIRS
                     else:
+                        # Use default pairs in demo mode or when dynamic selection is off
+                        symbols_to_analyze = self.settings.TRADING_PAIRS
+                        logger.info(f"Using default pairs: {symbols_to_analyze}")
                         symbols_to_analyze = self.settings.TRADING_PAIRS
                     
                     # Analyze all symbols (don't stop after 5)
@@ -975,7 +988,10 @@ class TradingEngine:
                         # Small delay between symbols to avoid rate limits
                         await asyncio.sleep(1)
                     
-                    logger.info(f"Completed analysis cycle: {analyzed_count}/{len(symbols_to_analyze)} coins")
+                    logger.info(f"\n{'='*50}")
+                    logger.info(f"Analysis cycle complete: {analyzed_count}/{len(symbols_to_analyze)} coins analyzed")
+                    logger.info(f"Next analysis in {analysis_interval} seconds")
+                    logger.info(f"{'='*50}\n")
                     last_analysis_time = current_time
                 
                 # Wait before next iteration
