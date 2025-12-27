@@ -385,6 +385,18 @@
                 </div>
             </div>
             
+            <!-- HUGE Next Analysis Indicator - Very Prominent -->
+            <div class="mb-4 p-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl border-2 border-blue-400 shadow-lg" x-show="status.is_running">
+                <div class="text-center">
+                    <div class="text-sm text-blue-100 mb-2 uppercase tracking-wide font-semibold">⏱️ Next Analysis Coming</div>
+                    <div class="text-5xl font-black text-white mb-3 font-mono" x-text="thoughts.length > 0 ? getNextCoin(thoughts[0].symbol) : 'BTCUSDT'"></div>
+                    <div class="flex items-center justify-center space-x-3 text-2xl font-bold">
+                        <span :class="analysisCountdown > 10 ? 'text-white' : 'text-yellow-300 animate-pulse'" x-text="analysisCountdown"></span>
+                        <span class="text-blue-100">seconds remaining</span>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Progress bar -->
             <div class="mb-4" x-show="status.is_running">
                 <div class="flex items-center justify-between mb-2">
