@@ -961,7 +961,6 @@ class TradingEngine:
                         # Use default pairs in demo mode or when dynamic selection is off
                         symbols_to_analyze = self.settings.TRADING_PAIRS
                         logger.info(f"Using default pairs: {symbols_to_analyze}")
-                        symbols_to_analyze = self.settings.TRADING_PAIRS
                     
                     # Analyze all symbols (don't stop after 5)
                     analyzed_count = 0
@@ -997,10 +996,15 @@ class TradingEngine:
                 # Wait before next iteration
                 await asyncio.sleep(price_check_interval)
                 
+            except KeyboardInterrupt:
+                logger.info("Keyboard interrupt received, shutting down...")
+                break
             except Exception as e:
-                logger.error(f"Error in trading loop: {e}")
+                logger.error(f"Error in trading loop: {e}", exc_info=True)
+                # Don't exit on errors - keep running
                 await asyncio.sleep(10)
         
+        logger.info("Trading loop stopped, shutting down...")
         await self.shutdown()
     
     def get_status(self) -> Dict:

@@ -223,6 +223,9 @@ async def lifespan(app: FastAPI):
     # Initialize trading engine
     trading_engine = TradingEngine()
     
+    # Keep references to background tasks to prevent garbage collection
+    background_tasks = []
+    
     try:
         await trading_engine.initialize()
         logger.info("Trading engine initialized")
@@ -230,17 +233,30 @@ async def lifespan(app: FastAPI):
         # Auto-start trading loop in Docker/production environments
         if os.getenv("AUTO_START_BOT", "false").lower() == "true":
             logger.info("AUTO_START_BOT=true - Starting trading loop automatically...")
-            asyncio.create_task(trading_engine.run())
+            # Keep task reference so it doesn't get garbage collected
+            main_task = asyncio.create_task(trading_engine.run())
+            background_tasks.append(main_task)
+            logger.info(f"Trading loop task created: {main_task}")
             
             # Run initial analysis immediately so users see activity
             logger.info("Running initial analysis for immediate feedback...")
-            asyncio.create_task(_run_initial_analysis(trading_engine))
+            initial_task = asyncio.create_task(_run_initial_analysis(trading_engine))
+            background_tasks.append(initial_task)
     except Exception as e:
         logger.error(f"Failed to initialize trading engine: {e}")
     
     yield
     
     # Cleanup
+    logger.info("Shutting down background tasks...")
+    for task in background_tasks:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+    
     if trading_engine:
         await trading_engine.shutdown()
     
