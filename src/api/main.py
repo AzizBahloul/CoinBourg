@@ -658,6 +658,57 @@ async def get_ai_thoughts(
     return engine.ai_thoughts[:limit]
 
 
+@app.get("/api/v1/ai/thoughts/history", tags=["AI"])
+async def get_ai_thoughts_history(
+    limit: int = 100,
+    symbol: Optional[str] = None,
+    engine: TradingEngine = Depends(get_engine),
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Get AI thoughts history from database."""
+    try:
+        conn = engine.state_manager._get_connection()
+        cursor = conn.cursor()
+        
+        if symbol:
+            cursor.execute("""
+                SELECT timestamp, symbol, action, confidence, reasoning, 
+                       price, sentiment, filtered_reason
+                FROM ai_thoughts
+                WHERE symbol = %s
+                ORDER BY timestamp DESC
+                LIMIT %s
+            """, (symbol, limit))
+        else:
+            cursor.execute("""
+                SELECT timestamp, symbol, action, confidence, reasoning, 
+                       price, sentiment, filtered_reason
+                FROM ai_thoughts
+                ORDER BY timestamp DESC
+                LIMIT %s
+            """, (limit,))
+        
+        rows = cursor.fetchall()
+        cursor.close()
+        
+        return [
+            {
+                "timestamp": row[0].isoformat(),
+                "symbol": row[1],
+                "action": row[2],
+                "confidence": float(row[3]) if row[3] else 0.0,
+                "reasoning": row[4],
+                "price": float(row[5]) if row[5] else 0.0,
+                "sentiment": row[6],
+                "filtered_reason": row[7]
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        logger.warning(f"Could not fetch AI thoughts history: {e}")
+        return []
+
+
 # ===========================================
 # Testing & Validation Endpoints
 # ===========================================
