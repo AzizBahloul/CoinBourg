@@ -369,6 +369,21 @@
             </div>
         </div>
 
+        <!-- Next Analysis Banner (always visible) -->
+        <div class="mb-4 p-4 rounded-xl border-2 border-blue-400 bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-700 shadow-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="text-xs text-blue-100 uppercase tracking-wide font-semibold">Next analysis</div>
+                    <div class="text-4xl font-black text-white font-mono" x-text="thoughts.length > 0 ? getNextCoin(thoughts[0].symbol) : 'BTCUSDT'"></div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs text-blue-100 mb-1">Countdown</div>
+                    <div class="text-3xl font-bold" :class="analysisCountdown > 10 ? 'text-white' : 'text-yellow-300 animate-pulse'" x-text="analysisCountdown + 's'"></div>
+                </div>
+            </div>
+            <div class="mt-2 text-xs text-blue-100">Version: v-next-indicator-2</div>
+        </div>
+
         <!-- Live AI Feed -->
         <div class="card-gradient rounded-2xl p-6 border border-white/10 mb-8">
             <div class="flex items-center justify-between mb-4">
