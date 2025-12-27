@@ -628,7 +628,7 @@ class TradingEngine:
         return decision
     
     def _record_ai_thought(self, symbol: str, decision: Dict, market_data: Dict):
-        """Record AI analysis for the UI feed."""
+        """Record AI analysis for the UI feed and database."""
         thought = {
             "timestamp": datetime.utcnow().isoformat(),
             "symbol": symbol,
@@ -640,10 +640,40 @@ class TradingEngine:
             "filtered_reason": decision.get("filtered_reason", None)
         }
         
-        # Keep last 50 thoughts
+        # Keep last 50 thoughts in memory
         self.ai_thoughts.insert(0, thought)
         if len(self.ai_thoughts) > 50:
             self.ai_thoughts.pop()
+        
+        # Persist to database for history
+        try:
+            asyncio.create_task(self._save_thought_to_db(thought))
+        except Exception as e:
+            logger.debug(f"Could not save thought to database: {e}")
+    
+    async def _save_thought_to_db(self, thought: Dict):
+        """Save AI thought to database for historical tracking."""
+        try:
+            conn = self.state_manager._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO ai_thoughts 
+                (timestamp, symbol, action, confidence, reasoning, price, sentiment, filtered_reason)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                thought['timestamp'],
+                thought['symbol'],
+                thought['action'],
+                thought['confidence'],
+                thought['reasoning'],
+                thought['price'],
+                thought['sentiment'],
+                thought.get('filtered_reason')
+            ))
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            logger.debug(f"Database save failed (non-critical): {e}")
     
     def _basic_technical_analysis(self, market_data: Dict) -> Dict:
         """Basic technical analysis fallback when AI is unavailable."""

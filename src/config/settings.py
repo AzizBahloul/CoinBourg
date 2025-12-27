@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     SCAN_INTERVAL_HOURS: int = Field(default=1, description="Hours between market scans")
     
     # Analysis Intervals
-    ANALYSIS_INTERVAL_SECONDS: int = Field(default=300, description="AI analysis interval in seconds")
+    ANALYSIS_INTERVAL_SECONDS: int = Field(default=60, description="AI analysis interval in seconds")
     PRICE_CHECK_INTERVAL_SECONDS: int = Field(default=10, description="Price check interval in seconds")
     
     # Paper Trading

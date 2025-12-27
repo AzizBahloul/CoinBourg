@@ -316,3 +316,26 @@ ORDER BY total_pnl DESC;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO coinbourg;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO coinbourg;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO coinbourg;
+
+-- ===========================================
+-- AI Thoughts History Table
+-- ===========================================
+CREATE TABLE IF NOT EXISTS ai_thoughts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    action VARCHAR(10) NOT NULL CHECK (action IN ('BUY', 'SELL', 'HOLD')),
+    confidence DECIMAL(5, 4),
+    reasoning TEXT,
+    price DECIMAL(20, 8),
+    sentiment VARCHAR(20),
+    filtered_reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ai_thoughts_timestamp ON ai_thoughts(timestamp DESC);
+CREATE INDEX idx_ai_thoughts_symbol ON ai_thoughts(symbol);
+CREATE INDEX idx_ai_thoughts_created_at ON ai_thoughts(created_at DESC);
+
+-- Grant permissions for new table
+GRANT ALL PRIVILEGES ON TABLE ai_thoughts TO coinbourg;

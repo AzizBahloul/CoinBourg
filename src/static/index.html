@@ -184,7 +184,15 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             <div class="lg:col-span-2 card-gradient rounded-2xl p-6 border border-white/10">
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-semibold">AI Orchestrator Insights</h2>
+                    <h2 class="text-lg font-semibold flex items-center space-x-3">
+                        <span>AI Orchestrator Insights</span>
+                        <span class="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-300" x-show="analysisCountdown > 0">
+                            Next analysis: <span x-text="analysisCountdown"></span>s
+                        </span>
+                        <span class="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-300 animate-pulse-slow" x-show="analysisCountdown <= 5 && analysisCountdown > 0">
+                            Analyzing...
+                        </span>
+                    </h2>
                     <span class="text-xs text-gray-400">Mode: <span x-text="orchestrator.mode"></span></span>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -631,6 +639,8 @@
                 analysis: null,
                 analyzeSymbol: 'BTCUSDT',
                 analyzing: false,
+                analysisCountdown: 60,
+                lastAnalysisTime: null,
                 apiUrl: window.location.origin,
                 safety: { master_kill: true, paper_trading: true, testnet: true },
                 freshness: [],
@@ -664,6 +674,25 @@
                     setInterval(() => this.fetchThoughts(), 5000);
                     setInterval(() => this.fetchInsights(), 10000);
                     setInterval(() => this.fetchPositions(), 7000);
+                    
+                    // Start countdown timer for next analysis (60 second interval)
+                    setInterval(() => {
+                        if (this.status.is_running) {
+                            this.updateAnalysisCountdown();
+                        }
+                    }, 1000);
+                },
+
+                updateAnalysisCountdown() {
+                    if (this.thoughts && this.thoughts.length > 0) {
+                        const lastThought = new Date(this.thoughts[0].timestamp);
+                        const now = new Date();
+                        const elapsed = Math.floor((now - lastThought) / 1000);
+                        this.analysisCountdown = Math.max(0, 60 - elapsed);
+                        this.lastAnalysisTime = lastThought.toLocaleTimeString();
+                    } else {
+                        this.analysisCountdown = 60;
+                    }
                 },
 
                 async fetchStatus() {
