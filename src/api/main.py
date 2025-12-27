@@ -197,6 +197,22 @@ class HealthResponse(BaseModel):
 # Application Lifecycle
 # ===========================================
 
+async def _run_initial_analysis(engine: TradingEngine):
+    """Run initial analysis on top symbols to show immediate activity."""
+    await asyncio.sleep(5)  # Wait for engine to fully initialize
+    try:
+        symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+        for symbol in symbols:
+            try:
+                await engine.analyze_and_decide(symbol)
+                logger.info(f"✓ Initial analysis completed for {symbol}")
+                await asyncio.sleep(2)  # Stagger requests
+            except Exception as e:
+                logger.warning(f"Initial analysis failed for {symbol}: {e}")
+    except Exception as e:
+        logger.error(f"Initial analysis task failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
@@ -215,6 +231,10 @@ async def lifespan(app: FastAPI):
         if os.getenv("AUTO_START_BOT", "false").lower() == "true":
             logger.info("AUTO_START_BOT=true - Starting trading loop automatically...")
             asyncio.create_task(trading_engine.run())
+            
+            # Run initial analysis immediately so users see activity
+            logger.info("Running initial analysis for immediate feedback...")
+            asyncio.create_task(_run_initial_analysis(trading_engine))
     except Exception as e:
         logger.error(f"Failed to initialize trading engine: {e}")
     

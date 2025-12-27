@@ -371,12 +371,28 @@
 
         <!-- Live AI Feed -->
         <div class="card-gradient rounded-2xl p-6 border border-white/10 mb-8">
-            <h2 class="text-lg font-semibold mb-4 flex items-center">
-                <svg class="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                </svg>
-                Live AI Thought Process
-            </h2>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold flex items-center space-x-3">
+                    <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                    </svg>
+                    <span>Live AI Thought Process</span>
+                    <span class="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-300 animate-pulse" x-show="status.is_running">● Active</span>
+                </h2>
+                <div class="text-xs text-gray-400">
+                    <span x-show="analysisCountdown > 0">Next: <span class="text-white font-semibold" x-text="analysisCountdown"></span>s</span>
+                    <span x-show="analysisCountdown <= 0" class="text-green-400 animate-pulse">Analyzing now...</span>
+                </div>
+            </div>
+            
+            <!-- Progress bar -->
+            <div class="mb-4" x-show="status.is_running">
+                <div class="w-full bg-white/5 rounded-full h-1.5">
+                    <div class="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full transition-all duration-1000" 
+                         :style="`width: ${Math.max(0, 100 - (analysisCountdown / 60 * 100))}%`"></div>
+                </div>
+            </div>
+            
             <div class="overflow-y-auto max-h-64 space-y-3 pr-2 custom-scrollbar">
                 <template x-for="thought in thoughts" :key="thought.timestamp + thought.symbol">
                     <div class="bg-white/5 rounded-lg p-3 border border-white/5 hover:bg-white/10 transition-colors">
@@ -404,8 +420,18 @@
                         </div>
                     </div>
                 </template>
-                <div x-show="thoughts.length === 0" class="text-center py-8 text-gray-500">
-                    Waiting for AI analysis...
+                <div x-show="thoughts.length === 0" class="text-center py-8">
+                    <div class="inline-flex items-center space-x-3">
+                        <svg class="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <div>
+                            <div class="text-gray-300 font-medium">Initializing AI analysis...</div>
+                            <div class="text-xs text-gray-500 mt-1" x-show="status.is_running">First analysis in progress (may take 60s)</div>
+                            <div class="text-xs text-yellow-400 mt-1" x-show="!status.is_running">⚠ Bot not running - Click "Start Bot" above</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
