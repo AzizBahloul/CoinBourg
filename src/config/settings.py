@@ -66,8 +66,8 @@ class Settings(BaseSettings):
     
     # Dynamic Coin Selection
     DYNAMIC_PAIR_SELECTION: bool = Field(default=True, description="Use dynamic coin scanner instead of fixed pairs")
-    MIN_VOLUME_USD: float = Field(default=1000000.0, description="Minimum 24h volume in USD for coin selection")
-    MAX_COINS_SCAN: int = Field(default=30, description="Maximum number of coins to scan/trade")
+    MIN_VOLUME_USD: float = Field(default=500000.0, description="Minimum 24h volume in USD for coin selection")
+    MAX_COINS_SCAN: int = Field(default=100, description="Maximum number of coins to scan/trade")
     SCAN_INTERVAL_HOURS: int = Field(default=1, description="Hours between market scans")
     
     # Analysis Intervals
