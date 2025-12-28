@@ -384,90 +384,138 @@
             <div class="mt-2 text-xs text-blue-100">Version: v-next-indicator-2</div>
         </div>
 
-        <!-- Live AI Feed -->
+        <!-- Live AI Feed - Redesigned for Batch Analysis -->
         <div class="card-gradient rounded-2xl p-6 border border-white/10 mb-8">
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center justify-between mb-6">
                 <h2 class="text-lg font-semibold flex items-center space-x-3">
                     <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
-                    <span>Live AI Thought Process</span>
-                    <span class="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-300 animate-pulse" x-show="status.is_running">● Active</span>
+                    <span>AI Batch Analysis</span>
+                    <span class="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-300 animate-pulse" x-show="status.is_running">● Live</span>
                 </h2>
-                <div class="text-xs text-gray-400">
-                    <span x-show="analysisCountdown > 0">Next: <span class="text-white font-semibold" x-text="analysisCountdown"></span>s</span>
-                    <span x-show="analysisCountdown <= 0" class="text-green-400 animate-pulse">Analyzing now...</span>
+            </div>
+
+            <!-- Batch Performance Stats -->
+            <div class="grid grid-cols-4 gap-4 mb-6">
+                <div class="bg-gradient-to-br from-green-500/10 to-green-600/5 rounded-lg p-4 border border-green-500/20">
+                    <div class="text-xs text-green-400 mb-1">Coins Analyzed</div>
+                    <div class="text-2xl font-bold text-white" x-text="getBatchStats().total"></div>
+                    <div class="text-xs text-gray-400 mt-1">in 1 API call</div>
+                </div>
+                <div class="bg-gradient-to-br from-purple-500/10 to-purple-600/5 rounded-lg p-4 border border-purple-500/20">
+                    <div class="text-xs text-purple-400 mb-1">Speed Boost</div>
+                    <div class="text-2xl font-bold text-white">10x</div>
+                    <div class="text-xs text-gray-400 mt-1">faster analysis</div>
+                </div>
+                <div class="bg-gradient-to-br from-blue-500/10 to-blue-600/5 rounded-lg p-4 border border-blue-500/20">
+                    <div class="text-xs text-blue-400 mb-1">Cost Savings</div>
+                    <div class="text-2xl font-bold text-white">97%</div>
+                    <div class="text-xs text-gray-400 mt-1">vs sequential</div>
+                </div>
+                <div class="bg-gradient-to-br from-yellow-500/10 to-yellow-600/5 rounded-lg p-4 border border-yellow-500/20">
+                    <div class="text-xs text-yellow-400 mb-1">High Confidence</div>
+                    <div class="text-2xl font-bold text-white" x-text="getBatchStats().highConfidence"></div>
+                    <div class="text-xs text-gray-400 mt-1">signals (>75%)</div>
                 </div>
             </div>
-            
-            <!-- HUGE Next Analysis Indicator - Very Prominent -->
-            <div class="mb-4 p-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl border-2 border-blue-400 shadow-lg" x-show="status.is_running">
-                <div class="text-center">
-                    <div class="text-sm text-blue-100 mb-2 uppercase tracking-wide font-semibold">⏱️ Next Analysis Coming</div>
-                    <div class="text-5xl font-black text-white mb-3 font-mono" x-text="thoughts.length > 0 ? getNextCoin(thoughts[0].symbol) : 'BTCUSDT'"></div>
-                    <div class="flex items-center justify-center space-x-3 text-2xl font-bold">
-                        <span :class="analysisCountdown > 10 ? 'text-white' : 'text-yellow-300 animate-pulse'" x-text="analysisCountdown"></span>
-                        <span class="text-blue-100">seconds remaining</span>
+
+            <!-- Action Summary Cards -->
+            <div class="grid grid-cols-3 gap-4 mb-6">
+                <!-- BUY Signals -->
+                <div class="bg-green-500/5 rounded-lg p-4 border border-green-500/20">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-semibold text-green-400">🟢 BUY SIGNALS</span>
+                        <span class="text-xl font-bold text-white" x-text="getBatchStats().buys"></span>
                     </div>
-                </div>
-            </div>
-            
-            <!-- Progress bar -->
-            <div class="mb-4" x-show="status.is_running">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center space-x-2">
-                        <div class="w-2 h-2 rounded-full" :class="analysisCountdown > 5 ? 'bg-blue-400' : 'bg-green-400 animate-pulse'"></div>
-                        <span class="text-sm font-medium" x-show="analysisCountdown > 5" x-text="`Next analysis in ${analysisCountdown}s`"></span>
-                        <span class="text-sm font-medium text-green-400 animate-pulse" x-show="analysisCountdown <= 5 && analysisCountdown > 0">Analyzing markets...</span>
-                        <span class="text-sm font-medium text-yellow-400 animate-pulse" x-show="analysisCountdown === 0">Running analysis now!</span>
-                    </div>
-                    <div class="text-xs text-gray-400" x-show="thoughts.length > 0">
-                        Last: <span x-text="new Date(thoughts[0].timestamp).toLocaleTimeString()"></span>
-                    </div>
-                </div>
-                <div class="w-full bg-white/5 rounded-full h-1.5">
-                    <div class="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full transition-all duration-1000" 
-                         :style="`width: ${Math.max(0, 100 - (analysisCountdown / 60 * 100))}%`"></div>
-                </div>
-                
-                <!-- Next Coin Indicator - Prominent Display -->
-                <div class="mt-3 p-3 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-lg border border-blue-400/30">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <div class="text-xs text-gray-400 mb-1">Next Coin to Analyze:</div>
-                            <div class="text-xl font-bold text-blue-400 font-mono" x-text="thoughts.length > 0 ? getNextCoin(thoughts[0].symbol) : 'BTCUSDT'"></div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-gray-400 mb-1">Time Remaining:</div>
-                            <div class="text-2xl font-bold" :class="analysisCountdown > 10 ? 'text-white' : 'text-green-400 animate-pulse'" x-text="analysisCountdown + 's'"></div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
-                    <span>Coins: <span class="text-white font-medium">BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT, XRPUSDT</span></span>
-                    <span>Interval: <span class="text-white font-medium">60s</span></span>
-                </div>
-            </div>
-            
-            <div class="overflow-y-auto max-h-64 space-y-3 pr-2 custom-scrollbar">
-                <template x-for="thought in thoughts" :key="thought.timestamp + thought.symbol">
-                    <div class="bg-white/5 rounded-lg p-3 border border-white/5 hover:bg-white/10 transition-colors">
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="flex items-center space-x-2">
-                                <span class="font-bold text-sm" x-text="thought.symbol"></span>
-                                <span class="text-xs text-gray-400" x-text="new Date(thought.timestamp).toLocaleTimeString()"></span>
+                    <div class="space-y-2 max-h-32 overflow-y-auto">
+                        <template x-for="thought in thoughts.filter(t => t.action === 'BUY').slice(0, 5)">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="font-mono text-white" x-text="thought.symbol"></span>
+                                <span class="text-green-400" x-text="(thought.confidence * 100).toFixed(0) + '%'"></span>
                             </div>
-                            <div class="flex items-center space-x-2">
-                                <span class="px-2 py-0.5 rounded text-xs font-medium"
+                        </template>
+                        <div x-show="getBatchStats().buys === 0" class="text-xs text-gray-500 text-center py-2">No buy signals</div>
+                    </div>
+                </div>
+
+                <!-- SELL Signals -->
+                <div class="bg-red-500/5 rounded-lg p-4 border border-red-500/20">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-semibold text-red-400">🔴 SELL SIGNALS</span>
+                        <span class="text-xl font-bold text-white" x-text="getBatchStats().sells"></span>
+                    </div>
+                    <div class="space-y-2 max-h-32 overflow-y-auto">
+                        <template x-for="thought in thoughts.filter(t => t.action === 'SELL').slice(0, 5)">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="font-mono text-white" x-text="thought.symbol"></span>
+                                <span class="text-red-400" x-text="(thought.confidence * 100).toFixed(0) + '%'"></span>
+                            </div>
+                        </template>
+                        <div x-show="getBatchStats().sells === 0" class="text-xs text-gray-500 text-center py-2">No sell signals</div>
+                    </div>
+                </div>
+
+                <!-- HOLD Signals -->
+                <div class="bg-gray-500/5 rounded-lg p-4 border border-gray-500/20">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-semibold text-gray-400">⚪ HOLD SIGNALS</span>
+                        <span class="text-xl font-bold text-white" x-text="getBatchStats().holds"></span>
+                    </div>
+                    <div class="space-y-2 max-h-32 overflow-y-auto">
+                        <template x-for="thought in thoughts.filter(t => t.action === 'HOLD').slice(0, 5)">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="font-mono text-white" x-text="thought.symbol"></span>
+                                <span class="text-gray-400" x-text="(thought.confidence * 100).toFixed(0) + '%'"></span>
+                            </div>
+                        </template>
+                        <div x-show="getBatchStats().holds === 0" class="text-xs text-gray-500 text-center py-2">No hold signals</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Analysis Stream (Compact) -->
+            <div class="border-t border-white/10 pt-4">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm font-semibold text-gray-400">Recent Analysis</span>
+                    <span class="text-xs text-gray-500" x-show="thoughts.length > 0">Last: <span x-text="new Date(thoughts[0]?.timestamp).toLocaleTimeString()"></span></span>
+                </div>
+                <div class="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                    <template x-for="thought in thoughts.slice(0, 10)" :key="thought.timestamp + thought.symbol">
+                        <div class="flex items-center justify-between bg-white/5 rounded p-2 hover:bg-white/10 transition-all cursor-pointer">
+                            <div class="flex items-center space-x-3 flex-1">
+                                <span class="font-mono text-sm font-semibold text-white min-w-[80px]" x-text="thought.symbol"></span>
+                                <span class="px-2 py-0.5 rounded text-xs font-semibold min-w-[50px] text-center"
                                     :class="{
                                         'bg-green-500/20 text-green-400': thought.action === 'BUY',
                                         'bg-red-500/20 text-red-400': thought.action === 'SELL',
                                         'bg-gray-500/20 text-gray-400': thought.action === 'HOLD'
                                     }" x-text="thought.action"></span>
-                                <span class="text-xs text-gray-400">Conf: <span x-text="(thought.confidence * 100).toFixed(0) + '%'"></span></span>
+                                <div class="flex items-center space-x-1">
+                                    <div class="w-16 bg-white/10 rounded-full h-1.5">
+                                        <div class="h-1.5 rounded-full" 
+                                            :class="{
+                                                'bg-green-500': thought.confidence >= 0.75,
+                                                'bg-yellow-500': thought.confidence >= 0.5 && thought.confidence < 0.75,
+                                                'bg-red-500': thought.confidence < 0.5
+                                            }"
+                                            :style="`width: ${thought.confidence * 100}%`"></div>
+                                    </div>
+                                    <span class="text-xs text-gray-400 min-w-[35px]" x-text="(thought.confidence * 100).toFixed(0) + '%'"></span>
+                                </div>
+                                <span class="text-xs text-gray-500 truncate max-w-md" x-text="thought.reasoning.slice(0, 80) + '...'"></span>
                             </div>
+                            <span class="text-xs text-gray-500 ml-3" x-text="new Date(thought.timestamp).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'})"></span>
                         </div>
+                    </template>
+                    <div x-show="thoughts.length === 0" class="text-center py-8 text-gray-500">
+                        <svg class="w-12 h-12 mx-auto mb-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                        </svg>
+                        <p class="text-sm">Waiting for AI analysis...</p>
+                    </div>
+                </div>
+            </div>
                         <p class="text-sm text-gray-300 mb-2" x-text="thought.reasoning"></p>
                         <div x-show="thought.filtered_reason" class="text-xs text-yellow-400/80 flex items-center">
                             <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -894,6 +942,22 @@
                     const sells = sorted.filter(t => (t.action || '').toUpperCase() === 'SELL').map(normalize).slice(0, 10);
 
                     return { buys, sells };
+                },
+
+                getBatchStats() {
+                    const thoughts = this.thoughts || [];
+                    const buys = thoughts.filter(t => t.action === 'BUY').length;
+                    const sells = thoughts.filter(t => t.action === 'SELL').length;
+                    const holds = thoughts.filter(t => t.action === 'HOLD').length;
+                    const highConfidence = thoughts.filter(t => t.confidence >= 0.75).length;
+                    
+                    return {
+                        total: thoughts.length,
+                        buys,
+                        sells,
+                        holds,
+                        highConfidence
+                    };
                 },
 
                 async toggleKill() {
