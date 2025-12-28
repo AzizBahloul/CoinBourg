@@ -1121,8 +1121,8 @@ class TradingEngine:
                     except Exception as e:
                         logger.warning(f"Periodic state save failed: {e}")
                 
-                # Update portfolio value (if Binance available)
-                if self.binance_available:
+                # Update portfolio value (if NOT paper trading and Binance available)
+                if self.binance_available and not self.paper_trading:
                     try:
                         self.metrics['current_value'] = await self.binance.get_portfolio_value()
                         if self.metrics['current_value'] > self.metrics['peak_value']:
