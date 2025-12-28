@@ -271,7 +271,27 @@ curl http://localhost:8000/health  # Verify app is responding
 
 ### Automated Deployment (GitHub Actions)
 
-Push to `main` branch to trigger automatic deployment:
+#### 🔐 Required GitHub Secrets
+
+Before you can deploy, configure these secrets in your GitHub repository:
+
+**Settings → Secrets and variables → Actions → New repository secret**
+
+**💡 Quick Setup Helper**: Run `bash scripts/validate_github_secrets.sh` to validate your configuration.
+
+| Secret Name | Description | Example |
+|-------------|-------------|---------|
+| `AZURE_HOST` | Your Azure VM IP address | `4.235.122.138` |
+| `AZURE_USERNAME` | SSH username for VM | `bourguibaCoin` |
+| `AZURE_PASSWORD` | SSH password for VM | `1v@P3+8GrbT8` |
+| `DEEPSEEK_API_KEY` | DeepSeek AI API key | `sk-xxxxx` |
+| `BINANCE_API_KEY` | Binance API key | `xxxxx` |
+| `BINANCE_API_SECRET` | Binance API secret | `xxxxx` |
+| `APP_SECRET_KEY` | Application secret key | Generate with `openssl rand -hex 32` |
+
+#### 🚀 Deploy by Pushing to Main
+
+The workflow triggers automatically on every push to `main` branch:
 
 1. **Commit and push:**
 ```bash
@@ -280,17 +300,30 @@ git commit -m "Your changes"
 git push origin main
 ```
 
-2. **Workflow automatically:**
-   - ✅ Creates deployment archive
+2. **GitHub Actions automatically:**
+   - ✅ Creates deployment archive (excludes venv, .git, __pycache__)
    - ✅ Uploads to Azure VM via SSH
+   - ✅ Creates .env file from GitHub secrets
    - ✅ Validates .env syntax
-   - ✅ Rebuilds Docker containers
-   - ✅ Verifies app health
-   - ✅ Logs deployment status
+   - ✅ Stops old containers and cleans Docker
+   - ✅ Rebuilds Docker images (no cache)
+   - ✅ Starts all services (PostgreSQL, Redis, CoinBourg, Nginx)
+   - ✅ Waits 30s for initialization
+   - ✅ Verifies app health at `/health` endpoint
+   - ✅ Shows container status and logs
 
-3. **Monitor workflow:**
-   - GitHub Actions: https://github.com/AzizBahloul/CoinBourg/actions
-   - Check "Deploy to Azure VM" step for status
+3. **Monitor deployment:**
+   - **GitHub Actions**: https://github.com/AzizBahloul/CoinBourg/actions
+   - **Live logs**: Click on the running workflow
+   - **Check status**: Look for ✓ "Deployment successful!"
+
+4. **Deployment takes ~3-5 minutes** including:
+   - Archive creation: 10s
+   - Upload to VM: 30s
+   - Docker rebuild: 2-3 min
+   - Health checks: 30s
+
+**📖 Detailed Setup Guide**: See [GITHUB_ACTIONS_SETUP.md](GITHUB_ACTIONS_SETUP.md) for complete step-by-step instructions, troubleshooting, and security best practices.
 
 ### Runtime Safeguards
 
