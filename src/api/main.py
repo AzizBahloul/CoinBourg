@@ -405,6 +405,19 @@ def create_app() -> FastAPI:
     async def rate_limiter(request: Request, call_next):
         return await rate_limit_middleware(request, call_next)
     
+    # Add cache-busting middleware for HTML responses
+    @app.middleware("http")
+    async def add_cache_headers(request: Request, call_next):
+        response = await call_next(request)
+        # Force no-cache for HTML pages (dashboard, testing)
+        if request.url.path in ["/", "/testing", "/testing.html"]:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            # Add version header for debugging
+            response.headers["X-App-Version"] = settings.APP_VERSION
+        return response
+    
     return app
 
 
