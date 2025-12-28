@@ -914,8 +914,9 @@ class TradingEngine:
             position_value = portfolio_value * (self.max_position_size_percent / 100)
             quantity = position_value / current_price
             
-            # Generate unique trade ID
-            trade_id = f"PAPER-{symbol}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+            # Generate unique trade ID (UUID format for database compatibility)
+            import uuid
+            trade_id = str(uuid.uuid4())
             
             # Calculate stop loss and take profit
             confidence = analysis.get('confidence', 0.65)
