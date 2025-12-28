@@ -429,12 +429,19 @@ async def get_engine() -> TradingEngine:
 
 @app.get("/", tags=["General"])
 async def root():
-    """Serve the dashboard UI."""
+    """Serve the dashboard UI with no-cache headers."""
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     index_file = os.path.join(static_dir, "index.html")
     
     if os.path.exists(index_file):
-        return FileResponse(index_file)
+        return FileResponse(
+            index_file,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     else:
         # Fallback to JSON response if HTML not found
         return {
@@ -446,12 +453,19 @@ async def root():
 
 @app.get("/testing", tags=["General"])
 async def testing_dashboard():
-    """Serve the testing dashboard UI."""
+    """Serve the testing dashboard UI with no-cache headers."""
     static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     testing_file = os.path.join(static_dir, "testing.html")
     
     if os.path.exists(testing_file):
-        return FileResponse(testing_file)
+        return FileResponse(
+            testing_file,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     else:
         raise HTTPException(status_code=404, detail="Testing dashboard not found")
 
