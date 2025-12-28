@@ -198,14 +198,18 @@ class TradingEngine:
         
         # Test DeepSeek connection (optional - bot can work without AI)
         try:
+            logger.info("Testing DeepSeek AI connection...")
             if await self.deepseek.test_connection():
-                logger.info("✓ DeepSeek connection established")
+                logger.info("✓ DeepSeek connection established - AI analysis enabled")
                 self.deepseek_available = True
             else:
-                logger.warning("⚠ DeepSeek connection failed - AI features disabled")
+                logger.warning("⚠ DeepSeek connection test returned False - AI features disabled")
+                logger.warning("  Check your DEEPSEEK_API_KEY in .env file")
                 self.deepseek_available = False
         except Exception as e:
-            logger.warning(f"⚠ DeepSeek unavailable: {e} - AI features disabled")
+            logger.error(f"⚠ DeepSeek initialization failed: {type(e).__name__}: {e}")
+            logger.error("  Verify DEEPSEEK_API_KEY is valid and network allows connections to api.deepseek.com")
+            logger.warning("  Running with basic technical analysis only (no AI)")
             self.deepseek_available = False
         
         # Load exchange info (if Binance available)
@@ -606,8 +610,8 @@ class TradingEngine:
         # Get AI analysis if available, otherwise use basic analysis
         if self.deepseek_available:
             try:
-                # Remove fields not accepted by analyze_market
-                ai_data = {k: v for k, v in market_data.items() if k != 'timestamp'}
+                # Remove fields not accepted by analyze_market (timestamp and duplicate 'indicators')
+                ai_data = {k: v for k, v in market_data.items() if k not in ['timestamp', 'indicators']}
                 analysis = await self.deepseek.analyze_market(**ai_data)
             except Exception as e:
                 logger.warning(f"AI analysis failed for {symbol}: {e}, using basic analysis")

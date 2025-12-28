@@ -118,6 +118,15 @@ class DeepSeekClient:
         self.base_url = self.settings.DEEPSEEK_BASE_URL
         self.model = self.settings.DEEPSEEK_MODEL
         
+        # Validate API key
+        if not self.api_key or self.api_key == "CHANGE_ME" or self.api_key == "your_deepseek_api_key_here":
+            logger.warning("⚠ DeepSeek API key not configured! Set DEEPSEEK_API_KEY in .env file")
+            logger.warning("  Get your API key from: https://platform.deepseek.com/api_keys")
+        elif not self.api_key.startswith("sk-"):
+            logger.warning(f"⚠ DeepSeek API key format looks invalid (should start with 'sk-')")
+        else:
+            logger.info(f"✓ DeepSeek API key loaded: {self.api_key[:10]}...{self.api_key[-5:]}")
+        
         # Session management
         self._session: Optional[aiohttp.ClientSession] = None
         self._session_lock = asyncio.Lock()
