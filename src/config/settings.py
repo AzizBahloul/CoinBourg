@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     
     # Paper Trading
     PAPER_TRADING: bool = Field(default=True, description="Enable paper trading mode (no real orders)")
+    PAPER_TRADING_INITIAL_CAPITAL: float = Field(default=100.0, description="Initial paper trading capital in USDT")
     TRADING_ENABLED: bool = Field(default=False, description="Master switch to enable live trading")
     
     # ===========================================

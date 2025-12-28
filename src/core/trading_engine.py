@@ -228,8 +228,17 @@ class TradingEngine:
         
         if not self.binance_available:
             logger.warning("⚠ Running in DEMO MODE - no real trading")
-            self.metrics["current_value"] = 100.0  # Demo balance ($100 for testing)
-            self.metrics["peak_value"] = 100.0
+            initial_capital = getattr(self.settings, 'PAPER_TRADING_INITIAL_CAPITAL', 100.0)
+            self.metrics["current_value"] = initial_capital
+            self.metrics["peak_value"] = initial_capital
+            logger.info(f"✓ Paper trading portfolio: ${initial_capital:,.2f}")
+        
+        # If paper trading is enabled, use paper trading balance
+        if self.paper_trading and self.binance_available:
+            initial_capital = getattr(self.settings, 'PAPER_TRADING_INITIAL_CAPITAL', 100.0)
+            self.metrics["current_value"] = initial_capital
+            self.metrics["peak_value"] = initial_capital
+            logger.info(f"✓ Paper trading mode: ${initial_capital:,.2f} (ignoring real balance)")
         
         # Check for incomplete trades
         if self.binance_available:
@@ -1039,7 +1048,10 @@ class TradingEngine:
             },
             "daily_trades": self.daily_trades_count,
             "max_daily_trades": self.max_daily_trades,
-            "risk_level": self.settings.RISK_LEVEL
+            "risk_level": self.settings.RISK_LEVEL,
+            "analysis_interval": self.settings.ANALYSIS_INTERVAL_SECONDS,
+            "paper_trading": self.paper_trading,
+            "paper_trading_capital": getattr(self.settings, 'PAPER_TRADING_INITIAL_CAPITAL', 100.0)
         }
 
     async def _execute_trade(self, symbol: str, ai_decision: Dict) -> Position:
