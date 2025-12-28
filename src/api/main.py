@@ -203,8 +203,8 @@ async def _run_continuous_analysis(engine: TradingEngine):
     
     logger.info("🔄 Starting continuous AI thought process...")
     
-    # Check if batch analysis is enabled
-    use_batch = engine.settings.get("USE_BATCH_ANALYSIS", True)  # Default to batch mode
+    # Check if batch analysis is enabled (use getattr since Settings is a Pydantic model)
+    use_batch = getattr(engine.settings, "USE_BATCH_ANALYSIS", True)  # Default to batch mode
     
     while engine.is_running:
         try:
