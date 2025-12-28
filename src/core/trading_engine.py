@@ -181,7 +181,7 @@ class TradingEngine:
         """Initialize connections and verify setup."""
         logger.info("Initializing trading engine...")
         
-        # Restore previous state from database
+        # Restore previous state from database (positions, trades, etc.)
         try:
             await self.state_manager.restore_state(self)
             logger.info("✓ Previous state restored from database")
@@ -212,42 +212,45 @@ class TradingEngine:
             logger.warning("  Running with basic technical analysis only (no AI)")
             self.deepseek_available = False
         
-        # Load exchange info (if Binance available)
-        if self.binance_available:
+        # Determine initial capital based on mode
+        initial_capital = getattr(self.settings, 'PAPER_TRADING_INITIAL_CAPITAL', 100.0)
+        
+        # Set portfolio value based on trading mode
+        if self.paper_trading:
+            # Paper trading mode - always use paper trading capital
+            self.metrics["current_value"] = initial_capital
+            self.metrics["peak_value"] = initial_capital
+            logger.info(f"✓ PAPER TRADING MODE: ${initial_capital:,.2f} portfolio")
+        elif self.binance_available:
+            # Live trading with Binance - get real balance
             try:
                 await self.binance.get_exchange_info()
                 logger.info("✓ Exchange info loaded")
                 
-                # Get initial portfolio value
                 self.metrics["current_value"] = await self.binance.get_portfolio_value()
-                self.metrics["peak_value"] = self.metrics["current_value"]
-                logger.info(f"✓ Portfolio value: ${self.metrics['current_value']:,.2f}")
+                self.metrics["peak_value"] = max(self.metrics["peak_value"], self.metrics["current_value"])
+                logger.info(f"✓ Live portfolio value: ${self.metrics['current_value']:,.2f}")
             except Exception as e:
                 logger.warning(f"⚠ Failed to load account info: {e}")
                 self.binance_available = False
-        
-        if not self.binance_available:
-            logger.warning("⚠ Running in DEMO MODE - no real trading")
-            initial_capital = getattr(self.settings, 'PAPER_TRADING_INITIAL_CAPITAL', 100.0)
+                # Fall back to paper trading
+                self.metrics["current_value"] = initial_capital
+                self.metrics["peak_value"] = initial_capital
+                logger.info(f"✓ Fallback to paper trading: ${initial_capital:,.2f}")
+        else:
+            # Demo mode (no Binance connection)
             self.metrics["current_value"] = initial_capital
             self.metrics["peak_value"] = initial_capital
-            logger.info(f"✓ Paper trading portfolio: ${initial_capital:,.2f}")
+            logger.info(f"✓ DEMO MODE: ${initial_capital:,.2f} portfolio")
         
-        # If paper trading is enabled, use paper trading balance
-        if self.paper_trading and self.binance_available:
-            initial_capital = getattr(self.settings, 'PAPER_TRADING_INITIAL_CAPITAL', 100.0)
-            self.metrics["current_value"] = initial_capital
-            self.metrics["peak_value"] = initial_capital
-            logger.info(f"✓ Paper trading mode: ${initial_capital:,.2f} (ignoring real balance)")
-        
-        # Check for incomplete trades
-        if self.binance_available:
+        # Check for incomplete trades (only if Binance available and not paper trading)
+        if self.binance_available and not self.paper_trading:
             try:
                 await self.state_manager.recover_incomplete_trades(self)
             except Exception as e:
                 logger.warning(f"Error recovering incomplete trades: {e}")
         
-        logger.info("Trading engine initialized successfully")
+        logger.info(f"Trading engine initialized - Portfolio: ${self.metrics['current_value']:,.2f}")
     
     async def shutdown(self):
         """Gracefully shutdown the trading engine."""
