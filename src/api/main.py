@@ -205,9 +205,20 @@ async def _run_continuous_analysis(engine: TradingEngine):
     
     while engine.is_running:
         try:
-            # Get all trading pairs from settings
-            symbols = engine.settings.TRADING_PAIRS
-            logger.info(f"🧠 Starting new analysis cycle for {len(symbols)} symbols...")
+            # Get symbols dynamically or use default pairs
+            if engine.settings.DYNAMIC_PAIR_SELECTION and engine.binance_available:
+                try:
+                    coin_metrics = await engine.coin_selector.scan_market()
+                    symbols = [coin.symbol for coin in coin_metrics]
+                    logger.info(f"🧠 Dynamic scan: analyzing top {len(symbols)} coins by volume/performance")
+                except Exception as e:
+                    logger.warning(f"Dynamic scan failed, using default pairs: {e}")
+                    symbols = engine.settings.TRADING_PAIRS
+            else:
+                symbols = engine.settings.TRADING_PAIRS
+                logger.info(f"🧠 Using fixed pairs: {len(symbols)} symbols")
+            
+            logger.info(f"📊 Starting analysis cycle: {', '.join(symbols[:10])}{'...' if len(symbols) > 10 else ''}")
             
             # Analyze each symbol continuously
             for symbol in symbols:
@@ -227,7 +238,7 @@ async def _run_continuous_analysis(engine: TradingEngine):
                     await asyncio.sleep(2)
             
             # After completing all symbols, loop back to the beginning
-            logger.info(f"✅ Completed full cycle. Restarting from beginning with fresh real-time data...")
+            logger.info(f"✅ Completed full cycle of {len(symbols)} coins. Restarting with fresh real-time data...")
             await asyncio.sleep(5)  # Brief pause before restarting cycle
             
         except Exception as e:

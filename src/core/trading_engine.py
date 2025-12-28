@@ -952,8 +952,10 @@ class TradingEngine:
                     # Get symbols to analyze
                     if self.settings.DYNAMIC_PAIR_SELECTION and self.binance_available:
                         try:
-                            symbols_to_analyze = await self.coin_selector.scan_market()
-                            logger.info(f"Dynamic scan returned {len(symbols_to_analyze)} coins")
+                            coin_metrics = await self.coin_selector.scan_market()
+                            # Extract symbol names from CoinMetrics objects
+                            symbols_to_analyze = [coin.symbol for coin in coin_metrics]
+                            logger.info(f"Dynamic scan returned {len(symbols_to_analyze)} coins: {', '.join(symbols_to_analyze[:10])}{'...' if len(symbols_to_analyze) > 10 else ''}")
                         except Exception as e:
                             logger.warning(f"Dynamic scan failed, using default pairs: {e}")
                             symbols_to_analyze = self.settings.TRADING_PAIRS
