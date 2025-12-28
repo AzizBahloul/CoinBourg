@@ -765,6 +765,7 @@ class TradingEngine:
         if decision['action'] in ['BUY', 'SELL']:
             decision['stop_loss'] = current_price * (1 - self.stop_loss_percent / 100)
             decision['take_profit'] = current_price * (1 + self.take_profit_percent / 100)
+            decision['current_price'] = current_price  # Include for paper trading
         
         return decision
     
@@ -801,10 +802,9 @@ class TradingEngine:
         Returns:
             Trade object if successful, None otherwise
         """
-        # Skip trading if not connected to Binance
-        if not self.binance_available:
-            logger.info(f"DEMO MODE: Would execute {action} for {symbol}")
-            return None
+        # Paper trading simulation - execute virtual trades
+        if not self.binance_available or self.paper_trading:
+            return await self._execute_paper_trade(symbol, action, analysis)
         
         try:
             # Calculate position size
@@ -880,11 +880,177 @@ class TradingEngine:
             logger.error(f"Trade execution failed: {e}")
             return None
     
+    async def _execute_paper_trade(
+        self,
+        symbol: str,
+        action: str,
+        analysis: Dict
+    ) -> Optional[Trade]:
+        """
+        Execute a simulated paper trade.
+        
+        Args:
+            symbol: Trading pair symbol
+            action: BUY or SELL
+            analysis: AI analysis with targets
+            
+        Returns:
+            Trade object if successful, None otherwise
+        """
+        try:
+            # Get current price from any available source
+            current_price = analysis.get('current_price', 0)
+            if current_price <= 0:
+                # Try to get price from cached market data
+                cached = self._analysis_cache.get(symbol, {})
+                current_price = cached.get('price', 0)
+            
+            if current_price <= 0:
+                logger.warning(f"Cannot execute paper trade for {symbol}: no price available")
+                return None
+            
+            # Calculate position size based on portfolio
+            portfolio_value = self.metrics.get("current_value", 100.0)
+            position_value = portfolio_value * (self.max_position_size_percent / 100)
+            quantity = position_value / current_price
+            
+            # Generate unique trade ID
+            trade_id = f"PAPER-{symbol}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+            
+            # Calculate stop loss and take profit
+            confidence = analysis.get('confidence', 0.65)
+            stop_loss_pct = self.stop_loss_percent
+            take_profit_pct = self.take_profit_percent
+            
+            if action == 'BUY':
+                stop_loss = current_price * (1 - stop_loss_pct / 100)
+                take_profit = current_price * (1 + take_profit_pct / 100)
+            else:
+                stop_loss = current_price * (1 + stop_loss_pct / 100)
+                take_profit = current_price * (1 - take_profit_pct / 100)
+            
+            logger.info(f"📝 PAPER TRADE: {action} {symbol}")
+            logger.info(f"   Price: ${current_price:.2f} | Qty: {quantity:.6f} | Value: ${position_value:.2f}")
+            logger.info(f"   SL: ${stop_loss:.2f} | TP: ${take_profit:.2f} | Confidence: {confidence:.0%}")
+            
+            if action == 'BUY':
+                # Check if we already have a position
+                if symbol in self.positions:
+                    logger.info(f"   Already have position in {symbol}, skipping")
+                    return None
+                
+                # Check if we have enough balance
+                if position_value > portfolio_value * 0.95:  # Don't use more than 95% of portfolio
+                    logger.info(f"   Insufficient paper balance for {symbol}")
+                    return None
+                
+                # Create position
+                position = Position(
+                    symbol=symbol,
+                    quantity=quantity,
+                    entry_price=current_price,
+                    current_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit
+                )
+                self.positions[symbol] = position
+                
+                # Deduct from paper balance
+                self.metrics["current_value"] -= position_value
+                
+                # Create trade record
+                trade = Trade(
+                    id=trade_id,
+                    symbol=symbol,
+                    side='BUY',
+                    entry_price=current_price,
+                    quantity=quantity,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    ai_confidence=confidence,
+                    ai_reasoning=analysis.get('reasoning', 'Paper trade based on AI signal')
+                )
+                
+            else:  # SELL
+                # Check if we have a position to sell
+                if symbol not in self.positions:
+                    logger.info(f"   No position to sell for {symbol}")
+                    return None
+                
+                position = self.positions.pop(symbol)
+                pnl = (current_price - position.entry_price) * position.quantity
+                pnl_percent = ((current_price - position.entry_price) / position.entry_price) * 100
+                
+                # Add back to paper balance (original + profit/loss)
+                original_value = position.entry_price * position.quantity
+                self.metrics["current_value"] += original_value + pnl
+                self.metrics["total_pnl"] += pnl
+                
+                if pnl > 0:
+                    self.metrics['winning_trades'] += 1
+                    logger.info(f"   💰 PROFIT: +${pnl:.2f} ({pnl_percent:+.2f}%)")
+                else:
+                    self.metrics['losing_trades'] += 1
+                    logger.info(f"   📉 LOSS: ${pnl:.2f} ({pnl_percent:+.2f}%)")
+                
+                # Create trade record
+                trade = Trade(
+                    id=trade_id,
+                    symbol=symbol,
+                    side='SELL',
+                    entry_price=position.entry_price,
+                    quantity=position.quantity,
+                    exit_price=current_price,
+                    pnl=pnl,
+                    pnl_percent=pnl_percent,
+                    ai_confidence=confidence,
+                    ai_reasoning=analysis.get('reasoning', 'Paper trade closed'),
+                    status=TradeStatus.CLOSED,
+                    exit_time=datetime.utcnow()
+                )
+            
+            # Update metrics
+            self.trades.append(trade)
+            self.daily_trades_count += 1
+            self.metrics['total_trades'] += 1
+            
+            # Update peak value for drawdown calculation
+            if self.metrics["current_value"] > self.metrics["peak_value"]:
+                self.metrics["peak_value"] = self.metrics["current_value"]
+            
+            # Save state after trade
+            try:
+                await self.state_manager.save_state(self)
+            except Exception as e:
+                logger.warning(f"Failed to save state after paper trade: {e}")
+            
+            logger.info(f"   📊 Portfolio: ${self.metrics['current_value']:.2f} | Total PnL: ${self.metrics['total_pnl']:.2f}")
+            return trade
+            
+        except Exception as e:
+            logger.error(f"Paper trade execution failed: {e}", exc_info=True)
+            return None
+
     async def check_stop_loss_take_profit(self):
         """Check and execute stop loss / take profit for open positions."""
         for symbol, position in list(self.positions.items()):
             try:
-                current_price = await self.binance.get_ticker_price(symbol)
+                # Get current price - try Binance first, then use cached price
+                current_price = None
+                if self.binance_available:
+                    try:
+                        current_price = await self.binance.get_ticker_price(symbol)
+                    except:
+                        pass
+                
+                # Fallback to cached price from analysis
+                if not current_price:
+                    cached = self._analysis_cache.get(symbol, {})
+                    current_price = cached.get('price', position.current_price)
+                
+                if not current_price:
+                    continue
+                
                 position.current_price = current_price
                 position.unrealized_pnl = (current_price - position.entry_price) * position.quantity
                 position.unrealized_pnl_percent = (
@@ -893,13 +1059,21 @@ class TradingEngine:
                 
                 # Check stop loss
                 if position.stop_loss and current_price <= position.stop_loss:
-                    logger.info(f"Stop loss triggered for {symbol} @ ${current_price:.2f}")
-                    await self.execute_trade(symbol, 'SELL', {'stop_loss': position.stop_loss})
+                    logger.info(f"🛑 Stop loss triggered for {symbol} @ ${current_price:.2f}")
+                    await self.execute_trade(symbol, 'SELL', {
+                        'stop_loss': position.stop_loss,
+                        'current_price': current_price,
+                        'reasoning': f'Stop loss triggered at ${current_price:.2f}'
+                    })
                 
                 # Check take profit
                 elif position.take_profit and current_price >= position.take_profit:
-                    logger.info(f"Take profit triggered for {symbol} @ ${current_price:.2f}")
-                    await self.execute_trade(symbol, 'SELL', {'take_profit': position.take_profit})
+                    logger.info(f"🎯 Take profit triggered for {symbol} @ ${current_price:.2f}")
+                    await self.execute_trade(symbol, 'SELL', {
+                        'take_profit': position.take_profit,
+                        'current_price': current_price,
+                        'reasoning': f'Take profit triggered at ${current_price:.2f}'
+                    })
                     
             except Exception as e:
                 logger.error(f"Error checking SL/TP for {symbol}: {e}")
