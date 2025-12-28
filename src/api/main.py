@@ -203,6 +203,9 @@ async def _run_continuous_analysis(engine: TradingEngine):
     
     logger.info("🔄 Starting continuous AI thought process...")
     
+    # Check if batch analysis is enabled
+    use_batch = engine.settings.get("USE_BATCH_ANALYSIS", True)  # Default to batch mode
+    
     while engine.is_running:
         try:
             # Get symbols dynamically or use default pairs
@@ -220,7 +223,73 @@ async def _run_continuous_analysis(engine: TradingEngine):
             
             logger.info(f"📊 Starting analysis cycle: {', '.join(symbols[:10])}{'...' if len(symbols) > 10 else ''}")
             
-            # Analyze each symbol continuously
+            # BATCH MODE (FAST): Analyze all coins in 1 API call
+            if use_batch and len(symbols) > 5:
+                try:
+                    logger.info(f"🚀 BATCH MODE: Analyzing {len(symbols)} coins in 1 API call...")
+                    start_time = datetime.utcnow()
+                    
+                    # Gather all coin data
+                    coins_data = []
+                    for symbol in symbols:
+                        try:
+                            market_data = await engine.get_market_data(symbol)
+                            coins_data.append(market_data)
+                        except Exception as e:
+                            logger.warning(f"Failed to fetch data for {symbol}: {e}")
+                    
+                    # Build market context
+                    total_volume = sum(c.get('volume_24h', 0) for c in coins_data)
+                    avg_change = sum(c.get('price_change_24h', 0) for c in coins_data) / len(coins_data) if coins_data else 0
+                    
+                    market_context = {
+                        "total_coins": len(coins_data),
+                        "total_volume_24h": total_volume,
+                        "average_change_24h": avg_change,
+                        "market_sentiment": "BULLISH" if avg_change > 2 else "BEARISH" if avg_change < -2 else "NEUTRAL",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    
+                    # Single AI API call for all coins
+                    batch_results = await engine.deepseek.analyze_batch_markets(
+                        coins=coins_data,
+                        market_context=market_context
+                    )
+                    
+                    elapsed = (datetime.utcnow() - start_time).total_seconds()
+                    logger.info(f"✅ Batch analysis completed in {elapsed:.1f}s ({len(coins_data)} coins)")
+                    logger.info(f"💰 Saved {len(coins_data)-1} API calls (~{((len(coins_data)-1)/len(coins_data)*100):.0f}% cost reduction)")
+                    
+                    # Store results in thought stream
+                    for symbol, analysis in batch_results.items():
+                        thought = {
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "symbol": symbol,
+                            "action": analysis.get('action', 'HOLD'),
+                            "confidence": analysis.get('confidence', 0.0),
+                            "reasoning": analysis.get('reasoning', ''),
+                            "sentiment": analysis.get('sentiment', 'NEUTRAL'),
+                            "price": next((c['current_price'] for c in coins_data if c['symbol'] == symbol), 0)
+                        }
+                        
+                        # Add to engine's thought stream
+                        engine.ai_thoughts.append(thought)
+                    
+                    # Limit to last 1000 thoughts total
+                    if len(engine.ai_thoughts) > 1000:
+                        engine.ai_thoughts = engine.ai_thoughts[-1000:]
+                    
+                    # After batch, restart cycle
+                    logger.info(f"✅ Completed batch cycle of {len(symbols)} coins. Restarting...")
+                    await asyncio.sleep(5)
+                    continue
+                    
+                except Exception as e:
+                    logger.error(f"Batch analysis failed, falling back to sequential: {e}")
+                    use_batch = False  # Disable batch for this cycle
+            
+            # SEQUENTIAL MODE (SLOW): Fallback or small symbol lists
+            logger.info("📝 Using sequential analysis (one coin at a time)")
             for symbol in symbols:
                 try:
                     if not engine.is_running:
