@@ -67,12 +67,14 @@ jobs:
             echo "BINANCE_TESTNET=false" >> .env
             echo "DATABASE_URL=postgresql://coinbourg:coinbourg_secure_password@db:5432/coinbourg" >> .env
             echo "REDIS_URL=redis://redis:6379/0" >> .env
-            echo "RISK_LEVEL=CONSERVATIVE" >> .env
+            echo "RISK_LEVEL=MODERATE" >> .env
             echo "MAX_POSITION_SIZE_PERCENT=5.0" >> .env
             echo "MAX_DAILY_TRADES=10" >> .env
-            echo "STOP_LOSS_PERCENT=2.0" >> .env
-            echo "TAKE_PROFIT_PERCENT=4.0" >> .env
+            echo "STOP_LOSS_PERCENT=2.5" >> .env
+            echo "TAKE_PROFIT_PERCENT=5.0" >> .env
             echo "MAX_DRAWDOWN_PERCENT=10.0" >> .env
+            echo "PAPER_TRADING=true" >> .env
+            echo "PAPER_TRADING_INITIAL_CAPITAL=100.0" >> .env
             echo 'TRADING_PAIRS=["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]' >> .env
             echo "BASE_CURRENCY=USDT" >> .env
             echo "ANALYSIS_INTERVAL_SECONDS=300" >> .env
