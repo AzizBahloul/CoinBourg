@@ -197,20 +197,44 @@ class HealthResponse(BaseModel):
 # Application Lifecycle
 # ===========================================
 
-async def _run_initial_analysis(engine: TradingEngine):
-    """Run initial analysis on top symbols to show immediate activity."""
+async def _run_continuous_analysis(engine: TradingEngine):
+    """Run continuous AI thought process analyzing all trading pairs in a loop."""
     await asyncio.sleep(5)  # Wait for engine to fully initialize
-    try:
-        symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
-        for symbol in symbols:
-            try:
-                await engine.analyze_and_decide(symbol)
-                logger.info(f"✓ Initial analysis completed for {symbol}")
-                await asyncio.sleep(2)  # Stagger requests
-            except Exception as e:
-                logger.warning(f"Initial analysis failed for {symbol}: {e}")
-    except Exception as e:
-        logger.error(f"Initial analysis task failed: {e}")
+    
+    logger.info("🔄 Starting continuous AI thought process...")
+    
+    while engine.is_running:
+        try:
+            # Get all trading pairs from settings
+            symbols = engine.settings.TRADING_PAIRS
+            logger.info(f"🧠 Starting new analysis cycle for {len(symbols)} symbols...")
+            
+            # Analyze each symbol continuously
+            for symbol in symbols:
+                try:
+                    if not engine.is_running:
+                        logger.info("⏸️  Engine stopped, exiting continuous analysis")
+                        break
+                        
+                    logger.info(f"🔍 Analyzing {symbol}...")
+                    await engine.analyze_and_decide(symbol)
+                    logger.info(f"✓ Analysis completed for {symbol}")
+                    
+                    # Small delay between symbols to avoid rate limits
+                    await asyncio.sleep(3)
+                except Exception as e:
+                    logger.warning(f"Analysis failed for {symbol}: {e}")
+                    await asyncio.sleep(2)
+            
+            # After completing all symbols, loop back to the beginning
+            logger.info(f"✅ Completed full cycle. Restarting from beginning with fresh real-time data...")
+            await asyncio.sleep(5)  # Brief pause before restarting cycle
+            
+        except Exception as e:
+            logger.error(f"Error in continuous analysis loop: {e}")
+            await asyncio.sleep(10)
+    
+    logger.info("🛑 Continuous analysis stopped")
 
 
 @asynccontextmanager
@@ -237,11 +261,12 @@ async def lifespan(app: FastAPI):
             main_task = asyncio.create_task(trading_engine.run())
             background_tasks.append(main_task)
             logger.info(f"Trading loop task created: {main_task}")
-            
-            # Run initial analysis immediately so users see activity
-            logger.info("Running initial analysis for immediate feedback...")
-            initial_task = asyncio.create_task(_run_initial_analysis(trading_engine))
-            background_tasks.append(initial_task)
+        
+        # Always run continuous AI thought process for dashboard
+        logger.info("🚀 Starting continuous AI thought process for real-time dashboard...")
+        analysis_task = asyncio.create_task(_run_continuous_analysis(trading_engine))
+        background_tasks.append(analysis_task)
+        logger.info(f"Continuous analysis task created: {analysis_task}")
     except Exception as e:
         logger.error(f"Failed to initialize trading engine: {e}")
     
