@@ -101,14 +101,21 @@ jobs:
             # Forcefully clean up existing containers and networks
             echo "Stopping and removing existing containers..."
             docker compose down --remove-orphans || true
+            docker-compose down --remove-orphans || true
             
             # Force remove any remaining containers with these names
             echo "Force removing any lingering containers..."
             docker rm -f coinbourg-bot coinbourg-db coinbourg-redis coinbourg-nginx 2>/dev/null || true
             
-            # Remove the network if it exists
-            echo "Removing existing network..."
+            # Remove containers by partial name match (handles different prefixes)
+            echo "Removing any containers with 'coinbourg' in name..."
+            docker ps -a --format '{{.Names}}' | grep -i coinbourg | xargs -r docker rm -f 2>/dev/null || true
+            
+            # Remove the network if it exists (try both possible names)
+            echo "Removing existing networks..."
             docker network rm coinbourg_coinbourg-network 2>/dev/null || true
+            docker network rm coinbourg_default 2>/dev/null || true
+            docker network ls | grep coinbourg | awk '{print $1}' | xargs -r docker network rm 2>/dev/null || true
             
             # Clean up Docker to free space
             echo "Cleaning up Docker resources..."

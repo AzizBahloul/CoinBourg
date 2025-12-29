@@ -59,7 +59,25 @@ fi
 
 # Stop existing containers
 echo "🛑 Stopping existing containers..."
-docker-compose down || true
+docker-compose down --remove-orphans || true
+docker compose down --remove-orphans || true
+
+# Force remove containers by name
+echo "🗑️  Force removing lingering containers..."
+docker rm -f coinbourg-bot coinbourg-db coinbourg-redis coinbourg-nginx 2>/dev/null || true
+
+# Remove all coinbourg containers
+docker ps -a --format '{{.Names}}' | grep -i coinbourg | xargs -r docker rm -f 2>/dev/null || true
+
+# Remove networks
+echo "🌐 Removing existing networks..."
+docker network rm coinbourg_coinbourg-network 2>/dev/null || true
+docker network rm coinbourg_default 2>/dev/null || true
+docker network ls | grep coinbourg | awk '{print $1}' | xargs -r docker network rm 2>/dev/null || true
+
+# Clean up Docker resources
+echo "🧹 Cleaning up Docker system..."
+docker system prune -af --volumes || true
 
 # Build and start services
 echo "🏗️  Building Docker images..."
